@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Details</title>
+    <!-- Bootstrap CSS for styling -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <style>
+        /* Add your custom styles here */
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1>Task Details</h1>
+        <div id="taskDetails" class="mt-4">
+            <!-- Task details will be dynamically inserted here -->
+        </div>
+        <form id="solutionForm" class="mt-4">
+            <div class="form-group">
+                <label for="solutionCode">Solution Code</label>
+                <textarea class="form-control" id="solutionCode" rows="5" placeholder="Enter your solution code here"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Submit Solution</button>
+        </form>
+    </div>
+
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.slim.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+    <!-- Firebase JavaScript SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore.js"></script>
+    <!-- Custom JavaScript -->
+    <script src="do-task.js"></script>
+</body>
+</html>
