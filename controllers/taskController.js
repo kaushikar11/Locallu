@@ -337,13 +337,15 @@ exports.updateTask = async (req, res) => {
 
 exports.fetchAllNotAssignedTasks = async (req, res) => {
     try {
+        console.log("sjdvbs");
         const snapshot = await db.collection('tasks').where('isAssigned', '==', false).get();
 
-        if (snapshot.empty) {
-            return res.status(404).json({ error: 'No not assigned tasks found' });
-        }
-
         const tasks = [];
+        if (snapshot.empty) {
+            return res.status(200).json(tasks);
+        }        
+        console.log("second");
+
         snapshot.forEach(doc => {
             //this code is necessary to format the retrieved task and to properly format date
             const data = doc.data();

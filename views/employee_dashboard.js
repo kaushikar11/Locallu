@@ -175,9 +175,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function displayTasks_all(tasks, containerId) {
+        console.log("taskyyy");
+        console.log(tasks);
         const tasksContainer = document.getElementById(containerId);
         tasksContainer.innerHTML = '';
-
         if (tasks.length === 0) {
             const noTasksMessage = document.createElement('div');
             noTasksMessage.className = 'alert alert-info';
@@ -308,7 +309,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const response = await fetch(`/api/tasks/notassigned`, {
                 method: 'GET',
             });
-    
+            console.log(response)
             if (!response.ok) {
                 throw new Error('Failed to fetch tasks');
             }
