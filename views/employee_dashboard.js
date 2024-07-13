@@ -54,6 +54,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             const employeeDetails = await response.json();
             console.log('Fetched Employee Details:', employeeDetails);
+            
+            displayEmployeeDetails(employeeId,employeeDetails);
 
             // displayEmployeeDetails(employeeDetails);
         } catch (error) {
@@ -62,74 +64,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
 
+    async function fetchProfilePictureforemployee(employeeId) {
+        try {
+            const response = await fetch(`/api/employees/profile/${employeeId}`, {
+                method: 'GET'
+            });
+    
+            if (!response.ok) {
+                throw new Error(`Failed to fetch business profile picture (${response.status} ${response.statusText})`);
+            }
+    
+    
+            const profileData = await response.json();
+            return profileData.profilePictureUrl;
+        } catch (error) {
+            console.error('Error fetching business profile picture:', error.message);
+        }
+    }
+    
 
-    // Function to display employee details
-    // function displayEmployeeDetails(details) {
-    //     document.getElementById('employeeName').textContent = details.firstName + ' ' + details.lastName || 'N/A';
-    //     document.getElementById('aboutEmployee').textContent = details.aboutEmployee || 'N/A';
 
-    //     let contactInfoHTML = '';
-    //     if (details.contactInfo && details.contactInfo.length > 0) {
-    //         const labels = ['Email', 'Mobile', 'Social Media'];
-    //         details.contactInfo.forEach((info, index) => {
-    //             contactInfoHTML += `<p>${labels[index]}: ${info}</p>`;
-    //         });
-    //     } else {
-    //         contactInfoHTML = '<p>No contact information available</p>';
-    //     }
-    //     document.getElementById('contactInfo').innerHTML = contactInfoHTML;
 
-    //     let skillsHTML = '';
-    //     if (details.skills && details.skills.length > 0) {
-    //         skillsHTML += '<p>Skills:</p><ul>';
-    //         details.skills.forEach(skill => {
-    //             skillsHTML += `<li>${skill}</li>`;
-    //         });
-    //         skillsHTML += '</ul>';
-    //     } else {
-    //         skillsHTML = '<p>No skills listed</p>';
-    //     }
-    //     document.getElementById('skills').innerHTML = skillsHTML;
-    // }
     const emppromise = fetchEmployeeIDByUserID(userData.uid);
     const empId=await emppromise;
     // const empDetails = await fetchEmployeeDetails(empId);
     console.log(empId);
 
 
-
-    // Function to fetch all tasks created by every business
-    // async function fetchAllTasks() {
-    //     try {
-    //         const response = await fetch('/api/tasks/every');
-    //         if (!response.ok) {
-    //             throw new Error('Failed to fetch tasks');
-    //         }
-    //         const tasks = await response.json();
-    //         console.log('Fetched All Tasks:', tasks);
-    //         displayTasks(tasks);
-    //     } catch (error) {
-    //         console.error('Error fetching tasks:', error.message);
-    //         displayTasks([]);
-    //     }
-    // }
-
-    // // Function to fetch tasks not assigned to any employee
-    // async function fetchAllNotAssignedTasks() {
-    //     try {
-    //         const response = await fetch('/api/tasks/notAssigned');
-    //         if (!response.ok) {
-    //             throw new Error('Failed to fetch not assigned tasks');
-    //         }
-    //         const tasks = await response.json();
-    //         console.log('Fetched Not Assigned Tasks:', tasks);
-    //         displayTasks(tasks);
-    //     } catch (error) {
-    //         console.error('Error fetching not assigned tasks:', error.message);
-    //         displayTasks([]);
-    //     }
-    // }
-    
     async function assignTaskToEmployee(taskId, empId) {
         try {
             const response = await fetch(`/api/tasks/assign/${taskId}/${empId}`, {
@@ -175,7 +136,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function displayTasks_all(tasks, containerId) {
-        console.log("taskyyy");
         console.log(tasks);
         const tasksContainer = document.getElementById(containerId);
         tasksContainer.innerHTML = '';
@@ -186,28 +146,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             tasksContainer.appendChild(noTasksMessage);
         } else {
             tasks.forEach(task => {
-                const taskCard = createTakCard_all(task);
+                const taskCard = createTaskCard_all(task);
                 tasksContainer.appendChild(taskCard);
             });
         }
     }
     function displayTasks_assigned(tasks, containerId) {
-        const tasksContainer = document.getElementById(containerId);
-        tasksContainer.innerHTML = '';
-
+        const assignedTasksContainer = document.getElementById(containerId);
+        assignedTasksContainer.innerHTML = '';
         if (tasks.length === 0) {
             const noTasksMessage = document.createElement('div');
             noTasksMessage.className = 'alert alert-info';
-            noTasksMessage.textContent = 'No tasks available';
-            tasksContainer.appendChild(noTasksMessage);
+            noTasksMessage.textContent = 'No tasks assigned';
+            assignedTasksContainer.appendChild(noTasksMessage);
         } else {
             tasks.forEach(task => {
-                const taskCard = createTakCard_assigned(task);
-                tasksContainer.appendChild(taskCard);
+                const taskCard = createTaskCard_assigned(task);
+                assignedTasksContainer.appendChild(taskCard);
             });
         }
     }
-    function createTakCard_all(task) {
+    function createTaskCard_all(task) {
         const taskCard = document.createElement('div');
         taskCard.className = 'card mb-3';
         taskCard.innerHTML = `
@@ -216,8 +175,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <p class="card-text">${task.description}</p>
                 <p class="card-text">Price: ${task.price}</p>
                 <p class="card-text">Due Date: ${new Date(task.dueDate).toLocaleDateString()}</p>
-                <button class="btn btn-success accept-btn">Accept</button>
-                <button class="btn btn-danger decline-btn">Decline</button>
+                <button class="btn btn-primary accept-btn">Accept</button>
             </div>
         `;
 
@@ -230,10 +188,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const assignedTasks = await fetchTasksByEmployeeId(empId);
                 displayTasks_assigned(assignedTasks, 'assignedTasksContainer');
             }
-        });
-        const declineBtn = taskCard.querySelector('.decline-btn');
-        declineBtn.addEventListener('click', async () => {
-        //
         });
         return taskCard;
     }
@@ -255,7 +209,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             throw new Error(error.message);
         }
     }
-    function createTakCard_assigned(task) {
+    function createTaskCard_assigned(task) {
         const taskCard = document.createElement('div');
         taskCard.className = 'card mb-3';
         taskCard.innerHTML = `
@@ -264,7 +218,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <p class="card-text">${task.description}</p>
                 <p class="card-text">Price: ${task.price}</p>
                 <p class="card-text">Due Date: ${new Date(task.dueDate).toLocaleDateString()}</p>
-                <button class="btn btn-success view-btn">View</button>
+                <button class="btn btn-info view-btn">View</button>
                 <button class="btn btn-danger decline-btn">Decline</button>
             </div>
         `;
@@ -400,6 +354,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('Error initializing employee dashboard:', error);
         }
     }
+
+    document.getElementById('editProfileButton').addEventListener('click', editEmployeeProfile);
+    function editEmployeeProfile() {
+        window.location.href = `/employee_edit?token=${token}`;
+    }
+
+    
+async function displayEmployeeDetails(employeeId,details) {
+
+    const pi = await fetchProfilePictureforemployee(employeeId);
+    console.log(pi);
+    document.getElementById('profilePicture').src = pi || 'default-profile.png';
+    document.getElementById('businessName').textContent = details.firstName+" "+details.lastName || 'N/A';
+    document.getElementById('companyDescription').textContent = details.aboutEmployee || 'N/A';
+    // document.getElementById('productPurpose').textContent = details.productPurpose || 'N/A';
+    // document.getElementById('businessEmail').textContent = details.email || 'N/A';
+    // document.getElementById('industry').textContent = details.industry || 'N/A';
+    // document.getElementById('contactInfo').textContent = details.contactInfo || 'N/A';
+}
 
     initializeEmployeeDashboard();
 });

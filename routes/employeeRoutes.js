@@ -17,6 +17,8 @@ router.post('/', employeeController.addEmployee);
 router.post('/uploadImage', upload.single('employeeImage'), employeeController.uploadImage);
 // New route to get employee details by user ID
 router.get('/:employeeId', employeeController.getEmployeeDetailsByID);
+router.put('/:id', employeeController.updateEmployeeDetails);
+router.put('/:id/updateProfilePicture', upload.single('profilePicture'), employeeController.updateProfilePicture);
 router.get('/profile/:employeeId', employeeController.getProfilePicture);
 router.get('/check-email/:email', employeeController.checkEmailExistsinEmp);
 

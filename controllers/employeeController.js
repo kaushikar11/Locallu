@@ -72,6 +72,32 @@ exports.getEmployeeDetailsByID = async (req, res) => {
     }
 };
 
+// Update a specific employee detail
+exports.updateEmployeeDetails = async (req, res) => {
+    const employeeId = req.params.id;
+    const { key, value } = req.body;
+
+    try {
+        const employeeRef = db.collection('employees').doc(employeeId);
+        const employeeDoc = await employeeRef.get();
+
+        if (!employeeDoc.exists) {
+            return res.status(404).json({ error: 'employee not found' });
+        }
+
+        // Update the specific detail
+        await employeeRef.update({
+            [key]: value
+        });
+
+        const updatedEmployeeDoc = await employeeRef.get();
+        res.json({ message: 'employee detail updated successfully', employee: updatedEmployeeDoc.data() });
+    } catch (error) {
+        console.error('Error updating employee detail:', error);
+        res.status(500).json({ error: 'An error occurred while updating the employee detail' });
+    }
+};
+
 // Get employee profile picture
 exports.getProfilePicture = async (req, res) => {
     const { employeeId } = req.params;
@@ -94,8 +120,8 @@ exports.checkEmailExistsinEmp = async (req, res) => {
     const { email } = req.params;
     
     try {
-        const businessesRef = db.collection('employees');
-        const snapshot = await businessesRef.where('email', '==', email).get();
+        const employeeesRef = db.collection('employees');
+        const snapshot = await employeeesRef.where('email', '==', email).get();
 
         if (snapshot.empty) {
             return res.json({ exists: false });
@@ -104,6 +130,47 @@ exports.checkEmailExistsinEmp = async (req, res) => {
         }
     } catch (error) {
         console.error('Error checking email:', error);
+        res.status(500).send('Internal Server Error');
+    }
+};
+
+exports.updateProfilePicture = async (req, res) => {
+    try {
+        const employeeId = req.params.id;
+        const file = req.file;
+
+        if (!file) {
+            return res.status(400).send('No file uploaded.');
+        }
+
+        // Define the storage path
+        const blob = bucket.file(`employees/${employeeId}/profilePicture/profilePicture.jpg`);
+        const blobStream = blob.createWriteStream({
+            metadata: {
+                contentType: file.mimetype
+            }
+        });
+
+        blobStream.on('error', (err) => {
+            console.error('Error uploading image:', err);
+            res.status(500).send('Error uploading image.');
+        });
+
+        blobStream.on('finish', async () => {
+            const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
+
+            // Update the employee profile picture URL in the Firestore
+            const employeeRef = db.collection('employees').doc(employeeId);
+            await employeeRef.update({
+                photoURL: publicUrl
+            });
+
+            res.status(200).json({ message: 'Profile picture updated successfully', imageUrl: publicUrl });
+        });
+
+        blobStream.end(file.buffer);
+    } catch (error) {
+        console.error('Error updating profile picture:', error);
         res.status(500).send('Internal Server Error');
     }
 };

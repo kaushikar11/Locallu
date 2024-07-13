@@ -178,6 +178,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const editDetailModal = bootstrap.Modal.getInstance(document.getElementById('editDetailModal'));
         // Hide the modal after saving changes
         editDetailModal.hide();
+        window.location.href = `/business_edit?token=${token}`;
     });
 
     async function updateBusinessDetail(businessId, key, value) {
