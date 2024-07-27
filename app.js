@@ -1,7 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const userRoutes = require('./routes/userRoutes');
-const employerRoutes = require('./routes/employerRoutes');
 const businessRoutes = require('./routes/businessRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
 const taskRoutes = require('./routes/taskRoutes');
@@ -14,7 +13,6 @@ const port = process.env.PORT || 3000;
 app.use(bodyParser.json());
 app.use('/api/tasks', taskRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/employers', employerRoutes);
 app.use('/api/businesses', businessRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/home', homeRoutes);
