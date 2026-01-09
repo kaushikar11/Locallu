@@ -1,5 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const cors = require('cors');
 const userRoutes = require('./routes/userRoutes');
 const businessRoutes = require('./routes/businessRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
@@ -10,7 +11,10 @@ const path = require('path');
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Enable CORS for all routes
+app.use(cors());
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use('/api/tasks', taskRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/businesses', businessRoutes);
@@ -25,12 +29,17 @@ app.get('/redirect-to-task', (req, res) => {
 
 // Serve static files from React build (in production)
 // In development, React app is served by webpack-dev-server on port 3001
-if (process.env.NODE_ENV === 'production') {
+// Only serve static files if NOT running on Vercel (Vercel handles static files separately)
+if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
     app.use(express.static(path.join(__dirname, 'dist')));
-    app.get('*', (req, res) => {
+    app.get('*', (req, res, next) => {
+        // Don't serve HTML for API routes
+        if (req.path.startsWith('/api')) {
+            return next();
+        }
         res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
-} else {
+} else if (process.env.NODE_ENV !== 'production') {
     // In development, redirect non-API routes to React dev server
     app.get('*', (req, res, next) => {
         // Don't redirect API routes
@@ -52,23 +61,33 @@ app.use((req, res, next) => {
 });
 
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).send('Something broke!');
+    console.error('Error:', err);
+    console.error('Stack:', err.stack);
+    res.status(500).json({ 
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'production' ? 'Something went wrong' : err.message
+    });
 });
 
-app.listen(port, () => {
-    console.log(`Server is running on http://localhost:${port}`);
-}).on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-        console.error(`\n❌ Port ${port} is already in use!\n`);
-        console.log('Try one of these solutions:');
-        console.log(`1. Kill the process using port ${port}:`);
-        console.log(`   lsof -ti:${port} | xargs kill -9`);
-        console.log(`2. Or change the port in your .env file or environment variable`);
-        console.log(`   PORT=3001 npm start\n`);
-        process.exit(1);
-    } else {
-        console.error('Server error:', err);
-        process.exit(1);
-    }
-});
+// Only start the server if not running as a serverless function (Vercel)
+if (process.env.VERCEL !== '1') {
+    app.listen(port, () => {
+        console.log(`Server is running on http://localhost:${port}`);
+    }).on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+            console.error(`\n❌ Port ${port} is already in use!\n`);
+            console.log('Try one of these solutions:');
+            console.log(`1. Kill the process using port ${port}:`);
+            console.log(`   lsof -ti:${port} | xargs kill -9`);
+            console.log(`2. Or change the port in your .env file or environment variable`);
+            console.log(`   PORT=3001 npm start\n`);
+            process.exit(1);
+        } else {
+            console.error('Server error:', err);
+            process.exit(1);
+        }
+    });
+}
+
+// Export the app for Vercel serverless functions
+module.exports = app;

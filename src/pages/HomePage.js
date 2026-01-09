@@ -334,7 +334,7 @@ const HomePage = () => {
                 </p>
                 <p style={styles.description}>
                   We match great talent with serious employers using AI and verified on-chain signals.
-                  Log in or sign up in seconds – your session stays alive with secure JWT tokens.
+                  Log in or sign up in seconds to get started.
                 </p>
               </div>
 
