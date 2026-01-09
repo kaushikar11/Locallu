@@ -11,3 +11,12 @@ yarn-error.log*
 *.swp
 *.swo
 *~
+
+# Firebase & Secrets
+config/serviceAccountKey.json
+*.json
+!package.json
+!package-lock.json
+!.babelrc
+!tsconfig.json
+!tsconfig.*.json
