@@ -4,6 +4,7 @@ const express = require('express');
 const multer = require('multer');
 const router = express.Router();
 const employeeController = require('../controllers/employeeController');
+const { authenticateToken, optionalAuth } = require('../middleware/authMiddleware');
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Middleware to log the date and time of request
@@ -12,15 +13,16 @@ router.use((req, res, next) => {
     next();
 });
 
-// Route to create a new employee
-router.post('/', employeeController.addEmployee);
-router.post('/uploadImage', upload.single('employeeImage'), employeeController.uploadImage);
-// New route to get employee details by user ID
-router.get('/:employeeId', employeeController.getEmployeeDetailsByID);
-router.put('/:id', employeeController.updateEmployeeDetails);
-router.put('/:id/updateProfilePicture', upload.single('profilePicture'), employeeController.updateProfilePicture);
-router.get('/profile/:employeeId', employeeController.getProfilePicture);
+// Public routes
 router.get('/check-email/:email', employeeController.checkEmailExistsinEmp);
+router.get('/:employeeId', optionalAuth, employeeController.getEmployeeDetailsByID);
+router.get('/profile/:employeeId', optionalAuth, employeeController.getProfilePicture);
+
+// Protected routes (auth required)
+router.post('/', authenticateToken, employeeController.addEmployee);
+router.post('/uploadImage', authenticateToken, upload.single('employeeImage'), employeeController.uploadImage);
+router.put('/:id', authenticateToken, employeeController.updateEmployeeDetails);
+router.put('/:id/updateProfilePicture', authenticateToken, upload.single('profilePicture'), employeeController.updateProfilePicture);
 
 module.exports = router;
 

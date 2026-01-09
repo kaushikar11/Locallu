@@ -3,60 +3,24 @@
 const express = require('express');
 const router = express.Router();
 const taskController = require('../controllers/taskController');
+const { authenticateToken, optionalAuth } = require('../middleware/authMiddleware');
 
-router.get('/every', async (req, res) => {
-    try {
-        await taskController.getEveryTask(req, res);
-    } catch (error) {
-        console.error('Router Error - Get Every Task:', error);
-        res.status(500).json({ error: 'Failed to fetch all tasks' });
-    }
-});
-
-// router.get('/notAssigned', async (req, res) => {
-//     try {
-//         await taskController.getNotAssignedTasks(req, res);
-//     } catch (error) {
-//         console.error('Router Error - Get Not Assigned Tasks:', error);
-//         res.status(500).json({ error: 'Failed to fetch not assigned tasks' });
-//     }
-// });
-
+// Public routes (no auth required)
 router.get('/notassigned', taskController.fetchAllNotAssignedTasks);
-
-router.get('/assigned/:employeeId', taskController.fetchTasksByEmployeeId);
-
-router.put('/assign/:taskId/:empId', async (req, res) => {
-    try {
-        await taskController.assignTask(req, res);
-    } catch (error) {
-        console.error('Error assigning task:', error.message);
-        res.status(500).json({ error: 'Failed to assign task' });
-    }
-});
-router.put('/unassign/:taskId', async (req, res) => {
-    try {
-        await taskController.unassignTask(req, res);
-    } catch (error) {
-        console.error('Error unassigning task:', error.message);
-        res.status(500).json({ error: 'Failed to unassign task' });
-    }
-});
-router.put('/submit/:taskId', taskController.submit);
-
+router.get('/:taskID', taskController.getTaskByTaskID);
 router.get('/detail/:taskID', taskController.getTaskByTaskID);
 
-// Route for handling file uploads related to tasks
-//router.post('/:taskId/upload', upload.single('file'), taskController.uploadFile);
-router.post('/', taskController.createTask);
-
-// Example route to get tasks by business ID
-router.get('/business/:businessId', taskController.getTasksByBusiness);
-router.get('/employee/:employeeId', taskController.getTasksByEmployee);
-//Example route to get tasks by a taskID
-router.get('/:taskID', taskController.getTaskByTaskID);
-router.delete('/delete/:taskID', taskController.deleteTaskById);
-router.put('/update/:taskID', taskController.updateTask);
-
+// Protected routes (auth required)
+router.post('/', authenticateToken, taskController.createTask);
+router.put('/assign/:taskId/:empId', authenticateToken, taskController.assignTask);
+router.put('/unassign/:taskId', authenticateToken, taskController.unassignTask);
+router.put('/submit/:taskId', authenticateToken, taskController.submit);
+router.put('/review/:taskId', authenticateToken, taskController.reviewTask);
+router.put('/status/:taskId', authenticateToken, taskController.updateTaskStatus);
+router.get('/business/:businessId', optionalAuth, taskController.getTasksByBusiness);
+router.get('/employee/:employeeId', optionalAuth, taskController.getTasksByEmployee);
+router.get('/assigned/:employeeId', optionalAuth, taskController.fetchTasksByEmployeeId);
+router.put('/update/:taskID', authenticateToken, taskController.updateTask);
+router.delete('/delete/:taskID', authenticateToken, taskController.deleteTaskById);
 
 module.exports = router;

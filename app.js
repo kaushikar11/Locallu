@@ -16,48 +16,39 @@ app.use('/api/users', userRoutes);
 app.use('/api/businesses', businessRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/home', homeRoutes);
-app.use(express.static(path.join(__dirname, 'views')));
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'index.html'));
-});
+// Legacy routes for backward compatibility (redirect to React app)
 app.get('/redirect-to-task', (req, res) => {
-    const { taskId } = req.query; // Extract taskId from query parameters
-
-    // Redirect to do-task.html with taskId as query parameter
-    res.redirect(`/do-task.html?taskId=${taskId}`);
+    const { taskId } = req.query;
+    res.redirect(`/employee/task/${taskId}`);
 });
 
-app.get('/home', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'home.html'));
-});
-app.get('/business_form', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'business_form.html'));
-});
-app.get('/employee_form', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'employee_form.html'));
-});
-app.get('/business_dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'business_dashboard.html'));
-});
-app.get('/business_task', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'business_task.html'));
-});
-app.get('/employee_dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'employee_dashboard.html'));
-});
-app.get('/employee_task', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'employee_task.html'));
-});
-app.get('/business_edit', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'business_edit.html'));
-});
-app.get('/employee_edit', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'employee_edit.html'));
-});
+// Serve static files from React build (in production)
+// In development, React app is served by webpack-dev-server on port 3001
+if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(path.join(__dirname, 'dist')));
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    });
+} else {
+    // In development, redirect non-API routes to React dev server
+    app.get('*', (req, res, next) => {
+        // Don't redirect API routes
+        if (req.path.startsWith('/api')) {
+            return next();
+        }
+        // Redirect to React dev server
+        res.redirect(`http://localhost:3001${req.path}`);
+    });
+}
 
 app.use((req, res, next) => {
-    res.status(404).send('Sorry, that route does not exist.');
+    // Only send 404 for API routes that don't exist
+    if (req.path.startsWith('/api')) {
+        res.status(404).json({ error: 'API route not found' });
+    } else {
+        res.status(404).send('Route not found. Please access the app at http://localhost:3001');
+    }
 });
 
 app.use((err, req, res, next) => {
@@ -67,4 +58,17 @@ app.use((err, req, res, next) => {
 
 app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
+}).on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`\n❌ Port ${port} is already in use!\n`);
+        console.log('Try one of these solutions:');
+        console.log(`1. Kill the process using port ${port}:`);
+        console.log(`   lsof -ti:${port} | xargs kill -9`);
+        console.log(`2. Or change the port in your .env file or environment variable`);
+        console.log(`   PORT=3001 npm start\n`);
+        process.exit(1);
+    } else {
+        console.error('Server error:', err);
+        process.exit(1);
+    }
 });

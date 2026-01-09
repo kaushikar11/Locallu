@@ -1,14 +1,34 @@
 //taskcontroller.js code
 
 const { db } = require('../config/firebase');
-const Task = require('../models/taskModel');
+const { Task, TASK_STATUS, isValidStatusTransition } = require('../models/taskModel');
 
+// Helper function to format task from Firestore
+function formatTaskFromFirestore(doc) {
+    const data = doc.data();
+    return {
+        id: doc.id,
+        name: data.name,
+        price: data.price,
+        description: data.description,
+        dueDate: data.dueDate?.toDate ? data.dueDate.toDate() : new Date(data.dueDate),
+        dateCreated: data.dateCreated?.toDate ? data.dateCreated.toDate() : new Date(data.dateCreated),
+        status: data.status || TASK_STATUS.PENDING,
+        isAssigned: data.isAssigned || false,
+        assignedTo: data.assignedTo || null,
+        businessId: data.businessId,
+        solution: data.solution || '',
+        reviewComments: data.reviewComments || null,
+        reviewedAt: data.reviewedAt?.toDate ? data.reviewedAt.toDate() : (data.reviewedAt ? new Date(data.reviewedAt) : null),
+        reviewedBy: data.reviewedBy || null
+    };
+}
 
+// Assign task to employee
 exports.assignTask = async (req, res) => {
     const { taskId, empId } = req.params;
 
     try {
-        // Fetch the task by ID
         const taskRef = db.collection('tasks').doc(taskId);
         const taskDoc = await taskRef.get();
 
@@ -16,23 +36,36 @@ exports.assignTask = async (req, res) => {
             return res.status(404).json({ error: 'Task not found' });
         }
 
-        // Update the task with the assigned employee ID
-        await taskRef.update({ assignedTo: empId , isAssigned:true});
+        const currentData = taskDoc.data();
+        const currentStatus = currentData.status || TASK_STATUS.PENDING;
 
-        // Respond with success message
-        res.json({ message: 'Task assigned successfully' });
+        // Validate status transition
+        if (currentStatus !== TASK_STATUS.PENDING && currentStatus !== TASK_STATUS.REJECTED) {
+            return res.status(400).json({ 
+                error: `Cannot assign task in status: ${currentStatus}. Task must be 'pending' or 'rejected'.` 
+            });
+        }
+
+        // Update task with assignment and status change
+        await taskRef.update({
+            assignedTo: empId,
+            isAssigned: true,
+            status: TASK_STATUS.ASSIGNED,
+            assignedAt: new Date()
+        });
+
+        res.json({ message: 'Task assigned successfully', status: TASK_STATUS.ASSIGNED });
     } catch (error) {
         console.error('Error assigning task:', error.message);
         res.status(500).json({ error: 'Failed to assign task' });
     }
 };
 
-// Unassign a task (set isAssigned to false)
+// Unassign a task
 exports.unassignTask = async (req, res) => {
-    const { taskId} = req.params;
+    const { taskId } = req.params;
 
     try {
-        // Fetch the task by ID
         const taskRef = db.collection('tasks').doc(taskId);
         const taskDoc = await taskRef.get();
 
@@ -40,23 +73,84 @@ exports.unassignTask = async (req, res) => {
             return res.status(404).json({ error: 'Task not found' });
         }
 
-        // Update the task with the assigned employee ID
-        await taskRef.update({ assignedTo: null , isAssigned:false});
+        const currentData = taskDoc.data();
+        const currentStatus = currentData.status || TASK_STATUS.ASSIGNED;
 
-        // Respond with success message
-        res.json({ message: 'Task assigned successfully' });
+        // Only allow unassigning if task is assigned or in progress
+        if (currentStatus !== TASK_STATUS.ASSIGNED && currentStatus !== TASK_STATUS.IN_PROGRESS) {
+            return res.status(400).json({ 
+                error: `Cannot unassign task in status: ${currentStatus}` 
+            });
+        }
+
+        await taskRef.update({
+            assignedTo: null,
+            isAssigned: false,
+            status: TASK_STATUS.PENDING,
+            unassignedAt: new Date()
+        });
+
+        res.json({ message: 'Task unassigned successfully', status: TASK_STATUS.PENDING });
     } catch (error) {
-        console.error('Error assigning task:', error.message);
-        res.status(500).json({ error: 'Failed to assign task' });
+        console.error('Error unassigning task:', error.message);
+        res.status(500).json({ error: 'Failed to unassign task' });
     }
-
 };
 
+// Update task status
+exports.updateTaskStatus = async (req, res) => {
+    const { taskId } = req.params;
+    const { newStatus, comments } = req.body;
+
+    try {
+        const taskRef = db.collection('tasks').doc(taskId);
+        const taskDoc = await taskRef.get();
+
+        if (!taskDoc.exists) {
+            return res.status(404).json({ error: 'Task not found' });
+        }
+
+        const currentData = taskDoc.data();
+        const currentStatus = currentData.status || TASK_STATUS.PENDING;
+
+        // Validate status transition
+        if (!isValidStatusTransition(currentStatus, newStatus)) {
+            return res.status(400).json({ 
+                error: `Invalid status transition from '${currentStatus}' to '${newStatus}'` 
+            });
+        }
+
+        const updateData = {
+            status: newStatus,
+            statusUpdatedAt: new Date()
+        };
+
+        // Special handling for status-specific fields
+        if (newStatus === TASK_STATUS.IN_PROGRESS && currentStatus === TASK_STATUS.ASSIGNED) {
+            updateData.startedAt = new Date();
+        }
+
+        if (comments) {
+            updateData.statusComments = comments;
+        }
+
+        await taskRef.update(updateData);
+
+        res.json({ 
+            message: 'Task status updated successfully', 
+            status: newStatus,
+            previousStatus: currentStatus
+        });
+    } catch (error) {
+        console.error('Error updating task status:', error.message);
+        res.status(500).json({ error: 'Failed to update task status' });
+    }
+};
+
+// Get task by ID
 exports.getTaskByTaskID = async (req, res) => {
     try {
         const { taskID } = req.params;
-        //console.log(taskID);
-        // Fetch the task from Firestore
         const taskRef = db.collection('tasks').doc(taskID);
         const taskDoc = await taskRef.get();
 
@@ -64,23 +158,7 @@ exports.getTaskByTaskID = async (req, res) => {
             return res.status(404).json({ error: 'Task not found' });
         }
 
-        // Parse task data into Task model
-        const data = taskDoc.data();
-        const task = {
-            id: taskDoc.id,
-            name: data.name,
-            price: data.price,
-            description: data.description,
-            dueDate: data.dueDate.toDate(), // Assuming dueDate is stored as Firestore timestamp
-            dateCreated: data.dateCreated.toDate(), // Assuming dateCreated is stored as Firestore timestamp
-            status: data.status,
-            isAssigned: data.isAssigned,
-            assignedTo: data.assignedTo,
-            businessId: data.businessId,
-            solution:data.solution
-        };
-
-        // Return the task as JSON response
+        const task = formatTaskFromFirestore(taskDoc);
         res.status(200).json(task);
     } catch (error) {
         console.error('Error fetching task by taskID:', error.message);
@@ -88,8 +166,7 @@ exports.getTaskByTaskID = async (req, res) => {
     }
 };
 
-
-// Controller function to get tasks by business ID
+// Get tasks by business ID
 exports.getTasksByBusiness = async (req, res, next) => {
     try {
         const businessId = req.params.businessId;
@@ -97,25 +174,12 @@ exports.getTasksByBusiness = async (req, res, next) => {
         const snapshot = await db.collection('tasks').where('businessId', '==', businessId).get();
 
         if (snapshot.empty) {
-            return res.status(404).json({ error: 'No tasks found' });
+            return res.status(200).json([]);
         }
 
         const tasks = [];
         snapshot.forEach(doc => {
-            const data = doc.data();
-            tasks.push(new Task(
-                doc.id,
-                data.name,
-                data.price,
-                data.description,
-                data.dueDate.toDate(), // assuming dueDate is stored as Firestore timestamp
-                data.dateCreated.toDate(), // assuming dateCreated is stored as Firestore timestamp
-                data.status,
-                data.isAssigned,
-                data.assignedTo,
-                data.businessId,
-                data.solution
-            ));
+            tasks.push(formatTaskFromFirestore(doc));
         });
 
         res.status(200).json(tasks);
@@ -125,6 +189,7 @@ exports.getTasksByBusiness = async (req, res, next) => {
     }
 };
 
+// Get tasks by employee ID
 exports.getTasksByEmployee = async (req, res, next) => {
     try {
         const employeeId = req.params.employeeId;
@@ -132,25 +197,12 @@ exports.getTasksByEmployee = async (req, res, next) => {
         const snapshot = await db.collection('tasks').where('employeeId', '==', employeeId).get();
 
         if (snapshot.empty) {
-            return res.status(404).json({ error: 'No tasks found' });
+            return res.status(200).json([]);
         }
 
         const tasks = [];
         snapshot.forEach(doc => {
-            const data = doc.data();
-            tasks.push(new Task(
-                doc.id,
-                data.name,
-                data.price,
-                data.description,
-                data.dueDate.toDate(), // assuming dueDate is stored as Firestore timestamp
-                data.dateCreated.toDate(), // assuming dateCreated is stored as Firestore timestamp
-                data.status,
-                data.isAssigned,
-                data.assignedTo,
-                data.businessId,
-                data.solution
-            ));
+            tasks.push(formatTaskFromFirestore(doc));
         });
 
         res.status(200).json(tasks);
@@ -159,12 +211,17 @@ exports.getTasksByEmployee = async (req, res, next) => {
         res.status(500).json({ error: 'Failed to fetch tasks' });
     }
 };
+
+// Submit solution for a task
 exports.submit = async (req, res) => {
     const { taskId } = req.params;
     const { solution } = req.body;
 
+    if (!solution || solution.trim() === '') {
+        return res.status(400).json({ error: 'Solution is required' });
+    }
+
     try {
-        // Fetch the task from Firestore
         const taskRef = db.collection('tasks').doc(taskId);
         const taskDoc = await taskRef.get();
 
@@ -172,39 +229,143 @@ exports.submit = async (req, res) => {
             return res.status(404).json({ error: 'Task not found' });
         }
 
-        // Update the task with the submitted solution
-        await taskRef.update({ solution : solution
- });
+        const currentData = taskDoc.data();
+        const currentStatus = currentData.status || TASK_STATUS.ASSIGNED;
 
-        // Respond with success message
-        res.json({ message: 'Solution submitted successfully' });
+        // Only allow submission if task is assigned or in progress
+        if (currentStatus !== TASK_STATUS.ASSIGNED && currentStatus !== TASK_STATUS.IN_PROGRESS) {
+            return res.status(400).json({ 
+                error: `Cannot submit solution for task in status: ${currentStatus}. Task must be 'assigned' or 'in_progress'.` 
+            });
+        }
+
+        // Update task with solution and change status to submitted
+        await taskRef.update({
+            solution: solution.trim(),
+            status: TASK_STATUS.SUBMITTED,
+            submittedAt: new Date()
+        });
+
+        res.json({ 
+            message: 'Solution submitted successfully',
+            status: TASK_STATUS.SUBMITTED
+        });
     } catch (error) {
         console.error('Error submitting solution:', error.message);
         res.status(500).json({ error: 'Failed to submit solution' });
     }
 };
-// Controller function to create a new task
-exports.createTask = async (req, res, next) => {
-    try {
-        const { name, price, description, dueDate, dateCreated, status, isAssigned, assignedTo, businessId } = req.body;
 
-        // Validate incoming data
-        if (!name || !price || !description || !dueDate || !dateCreated || !status || isAssigned === undefined || !businessId) {
-            return res.status(400).json({ error: 'Missing required fields' });
+// Review task solution (business only)
+exports.reviewTask = async (req, res) => {
+    const { taskId } = req.params;
+    const { action, reviewComments } = req.body; // action: 'approve' | 'reject' | 'request_changes'
+    const userId = req.user?.uid;
+
+    if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    if (!['approve', 'reject', 'request_changes'].includes(action)) {
+        return res.status(400).json({ error: 'Invalid action. Must be approve, reject, or request_changes' });
+    }
+
+    try {
+        const taskRef = db.collection('tasks').doc(taskId);
+        const taskDoc = await taskRef.get();
+
+        if (!taskDoc.exists) {
+            return res.status(404).json({ error: 'Task not found' });
         }
 
-        // Create new task object
+        const currentData = taskDoc.data();
+        const currentStatus = currentData.status || TASK_STATUS.SUBMITTED;
+
+        // Only allow review if task is submitted
+        if (currentStatus !== TASK_STATUS.SUBMITTED) {
+            return res.status(400).json({ 
+                error: `Cannot review task in status: ${currentStatus}. Task must be 'submitted'.` 
+            });
+        }
+
+        // Verify business owns this task
+        const businessRef = db.collection('users').doc(userId);
+        const businessDoc = await businessRef.get();
+        if (!businessDoc.exists || businessDoc.data().businessId !== currentData.businessId) {
+            return res.status(403).json({ error: 'You do not have permission to review this task' });
+        }
+
+        let newStatus;
+        const updateData = {
+            reviewedAt: new Date(),
+            reviewedBy: userId,
+            reviewComments: reviewComments || null
+        };
+
+        switch (action) {
+            case 'approve':
+                newStatus = TASK_STATUS.APPROVED;
+                updateData.approvedAt = new Date();
+                break;
+            case 'reject':
+                newStatus = TASK_STATUS.REJECTED;
+                updateData.rejectedAt = new Date();
+                break;
+            case 'request_changes':
+                newStatus = TASK_STATUS.IN_PROGRESS;
+                updateData.changesRequestedAt = new Date();
+                break;
+        }
+
+        updateData.status = newStatus;
+        await taskRef.update(updateData);
+
+        res.json({ 
+            message: `Task ${action} successfully`,
+            status: newStatus,
+            reviewComments
+        });
+    } catch (error) {
+        console.error('Error reviewing task:', error.message);
+        res.status(500).json({ error: 'Failed to review task' });
+    }
+};
+
+// Create a new task
+exports.createTask = async (req, res, next) => {
+    try {
+        const { name, price, description, dueDate, businessId } = req.body;
+        const userId = req.user?.uid;
+
+        // Validate incoming data
+        if (!name || !price || !description || !dueDate || !businessId) {
+            return res.status(400).json({ error: 'Missing required fields: name, price, description, dueDate, businessId' });
+        }
+
+        // Verify business ownership if user is authenticated
+        if (userId) {
+            const userRef = db.collection('users').doc(userId);
+            const userDoc = await userRef.get();
+            if (userDoc.exists && userDoc.data().businessId !== businessId) {
+                return res.status(403).json({ error: 'You do not have permission to create tasks for this business' });
+            }
+        }
+
+        // Create new task object with proper defaults
         const newTask = {
-            name,
-            price,
-            description,
-            dueDate: new Date(dueDate), // convert to JS Date object if necessary
-            dateCreated: new Date(dateCreated), // convert to JS Date object if necessary
-            status,
-            isAssigned,
-            assignedTo,
-            businessId,
-            solution:''
+            name: name.trim(),
+            price: parseFloat(price),
+            description: description.trim(),
+            dueDate: new Date(dueDate),
+            dateCreated: new Date(),
+            status: TASK_STATUS.PENDING,
+            isAssigned: false,
+            assignedTo: null,
+            businessId: businessId,
+            solution: '',
+            reviewComments: null,
+            reviewedAt: null,
+            reviewedBy: null
         };
 
         // Add the new task to the 'tasks' collection
@@ -216,6 +377,8 @@ exports.createTask = async (req, res, next) => {
         const businessDoc = await businessRef.get();
 
         if (!businessDoc.exists) {
+            // If business doesn't exist, delete the task and return error
+            await taskRef.delete();
             return res.status(404).json({ error: 'Business not found' });
         }
 
@@ -223,25 +386,61 @@ exports.createTask = async (req, res, next) => {
         const tasksArray = businessDoc.data().tasks || [];
         tasksArray.push(taskId);
 
-        // Update the document with the new tasks array
         await businessRef.update({ tasks: tasksArray });
 
-        // Respond with the taskId that was created
-        res.status(201).json({ taskId });
+        res.status(201).json({ 
+            taskId,
+            task: {
+                id: taskId,
+                ...newTask,
+                dueDate: newTask.dueDate.toISOString(),
+                dateCreated: newTask.dateCreated.toISOString()
+            }
+        });
     } catch (error) {
         console.error('Error creating task:', error);
         res.status(500).json({ error: 'Failed to create task' });
     }
 };
 
+// Delete task
 exports.deleteTaskById = async (req, res, next) => {
     try {
         const taskID = req.params.taskID;
+        const userId = req.user?.uid;
 
-        // Delete the task from Firestore
-        await db.collection('tasks').doc(taskID).delete();
+        const taskRef = db.collection('tasks').doc(taskID);
+        const taskDoc = await taskRef.get();
 
-        // Return success response
+        if (!taskDoc.exists) {
+            return res.status(404).json({ error: 'Task not found' });
+        }
+
+        // Verify ownership if user is authenticated
+        if (userId) {
+            const taskData = taskDoc.data();
+            const userRef = db.collection('users').doc(userId);
+            const userDoc = await userRef.get();
+            if (userDoc.exists && userDoc.data().businessId !== taskData.businessId) {
+                return res.status(403).json({ error: 'You do not have permission to delete this task' });
+            }
+        }
+
+        // Remove task from business tasks array
+        const taskData = taskDoc.data();
+        if (taskData.businessId) {
+            const businessRef = db.collection('businesses').doc(taskData.businessId);
+            const businessDoc = await businessRef.get();
+            if (businessDoc.exists) {
+                const tasksArray = businessDoc.data().tasks || [];
+                const updatedTasksArray = tasksArray.filter(id => id !== taskID);
+                await businessRef.update({ tasks: updatedTasksArray });
+            }
+        }
+
+        // Delete the task
+        await taskRef.delete();
+
         res.status(200).json({ message: 'Task deleted successfully' });
     } catch (error) {
         console.error('Error deleting task:', error);
@@ -249,6 +448,7 @@ exports.deleteTaskById = async (req, res, next) => {
     }
 };
 
+// Get tasks assigned to employee
 exports.fetchTasksByEmployeeId = async (req, res) => {
     const { employeeId } = req.params;
 
@@ -262,20 +462,7 @@ exports.fetchTasksByEmployeeId = async (req, res) => {
 
         const tasks = [];
         querySnapshot.forEach(doc => {
-            const data = doc.data();
-            const newTask = {
-                name: data.name,
-                price: data.price,
-                description: data.description,
-                dueDate: data.dueDate.toDate(), // convert to JS Date object if necessary
-                dateCreated: data.dateCreated.toDate(), // convert to JS Date object if necessary
-                status: data.status,
-                isAssigned: data.isAssigned,
-                assignedTo: data.assignedTo,
-                businessId: data.businessId,
-                solution:data.solution
-            };
-            tasks.push({ id: doc.id, ...newTask });
+            tasks.push(formatTaskFromFirestore(doc));
         });
 
         res.status(200).json(tasks);
@@ -285,82 +472,69 @@ exports.fetchTasksByEmployeeId = async (req, res) => {
     }
 };
 
+// Update task details
 exports.updateTask = async (req, res) => {
     try {
         const taskID = req.params.taskID;
-        const { description, price, dueDate } = req.body;
+        const { description, price, dueDate, name } = req.body;
+        const userId = req.user?.uid;
 
         // Validate incoming data
-        if (!description && !price && !dueDate) {
+        if (!description && !price && !dueDate && !name) {
             return res.status(400).json({ error: 'No fields to update' });
+        }
+
+        const taskRef = db.collection('tasks').doc(taskID);
+        const taskDoc = await taskRef.get();
+
+        if (!taskDoc.exists) {
+            return res.status(404).json({ error: 'Task not found' });
+        }
+
+        // Verify ownership if user is authenticated
+        if (userId) {
+            const taskData = taskDoc.data();
+            const userRef = db.collection('users').doc(userId);
+            const userDoc = await userRef.get();
+            if (userDoc.exists && userDoc.data().businessId !== taskData.businessId) {
+                return res.status(403).json({ error: 'You do not have permission to update this task' });
+            }
         }
 
         // Prepare updated fields
         const updatedFields = {};
-        if (description) updatedFields.description = description;
-        if (price) updatedFields.price = price;
+        if (description) updatedFields.description = description.trim();
+        if (price !== undefined) updatedFields.price = parseFloat(price);
         if (dueDate) updatedFields.dueDate = new Date(dueDate);
+        if (name) updatedFields.name = name.trim();
+
+        updatedFields.updatedAt = new Date();
 
         // Update the task document in Firestore
-        const taskRef = db.collection('tasks').doc(taskID);
         await taskRef.update(updatedFields);
 
-        // Fetch the updated task to send back in the response
+        // Fetch the updated task
         const updatedTaskDoc = await taskRef.get();
-        if (!updatedTaskDoc.exists) {
-            return res.status(404).json({ error: 'Task not found after update' });
-        }
+        const task = formatTaskFromFirestore(updatedTaskDoc);
 
-        const updatedTaskData = updatedTaskDoc.data();
-
-        // Construct Task model if needed
-        const updatedTaskModel = new Task(
-            updatedTaskDoc.id,
-            updatedTaskData.name,
-            updatedTaskData.price,
-            updatedTaskData.description,
-            updatedTaskData.dueDate.toDate(), // Convert Firestore timestamp to JS Date
-            updatedTaskData.status,
-            updatedTaskData.isAssigned,
-            updatedTaskData.assignedTo,
-            updatedTaskData.businessId,
-            updatedTaskData.solution
-        );
-
-        // Respond with the updated task
-        res.status(200).json(updatedTaskModel);
+        res.status(200).json(task);
     } catch (error) {
         console.error('Error updating task fields:', error);
         res.status(500).json({ error: 'Failed to update task fields' });
     }
 };
 
+// Get all unassigned tasks
 exports.fetchAllNotAssignedTasks = async (req, res) => {
     try {
-        console.log("sjdvbs");
-        const snapshot = await db.collection('tasks').where('isAssigned', '==', false).get();
+        const snapshot = await db.collection('tasks')
+            .where('isAssigned', '==', false)
+            .where('status', '==', TASK_STATUS.PENDING)
+            .get();
 
         const tasks = [];
-        if (snapshot.empty) {
-            return res.status(200).json(tasks);
-        }        
-        console.log("second");
-
         snapshot.forEach(doc => {
-            //this code is necessary to format the retrieved task and to properly format date
-            const data = doc.data();
-            tasks.push({
-                id: doc.id,
-                name: data.name,
-                description: data.description,
-                price: data.price,
-                dueDate: data.dueDate.toDate(),
-                status: data.status,
-                isAssigned: data.isAssigned,
-                assignedTo: data.assignedTo,
-                businessId: data.businessId,
-                //solution:solution
-            });
+            tasks.push(formatTaskFromFirestore(doc));
         });
 
         res.status(200).json(tasks);
@@ -369,17 +543,3 @@ exports.fetchAllNotAssignedTasks = async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch not assigned tasks' });
     }
 };
-
-//   exports.uploadFile = async (req, res) => {
-//     const taskId = req.params.taskId;
-//     const file = req.file; // Multer adds the file to req.file object
-//     try {
-//       // Handle file upload logic, save file path to task or database
-//       // Example: Update task with file path
-//       const updatedTask = await Task.findByIdAndUpdate(taskId, { filePath: file.path }, { new: true });
-//       res.json(updatedTask);
-//     } catch (error) {
-//       console.error('Error uploading file:', error.message);
-//       res.status(500).json({ error: 'Internal Server Error' });
-//     }
-//   };

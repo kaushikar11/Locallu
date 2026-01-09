@@ -4,6 +4,7 @@ const express = require('express');
 const multer = require('multer');
 const router = express.Router();
 const businessController = require('../controllers/businessController');
+const { authenticateToken, optionalAuth } = require('../middleware/authMiddleware');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -13,14 +14,15 @@ router.use((req, res, next) => {
     next();
 });
 
-// Route to create a new business
-router.post('/', businessController.addBusiness);
-router.post('/uploadImage', upload.single('businessImage'), businessController.uploadImage);
-// New route to get business details by user ID
-router.get('/:businessId', businessController.getBusinessDetailsByID);
-router.put('/:id', businessController.updateBusinessDetail);
-router.put('/:id/updateProfilePicture', upload.single('profilePicture'), businessController.updateProfilePicture);
-router.get('/profile/:businessId', businessController.getProfilePicture);
+// Public routes
 router.get('/check-email/:email', businessController.checkEmailExists);
+router.get('/:businessId', optionalAuth, businessController.getBusinessDetailsByID);
+router.get('/profile/:businessId', optionalAuth, businessController.getProfilePicture);
+
+// Protected routes (auth required)
+router.post('/', authenticateToken, businessController.addBusiness);
+router.post('/uploadImage', authenticateToken, upload.single('businessImage'), businessController.uploadImage);
+router.put('/:id', authenticateToken, businessController.updateBusinessDetail);
+router.put('/:id/updateProfilePicture', authenticateToken, upload.single('profilePicture'), businessController.updateProfilePicture);
 
 module.exports = router;
