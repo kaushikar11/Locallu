@@ -10,13 +10,13 @@ import Footer from '../components/Footer/Footer';
 
 const EmployeeDashboardPage = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, switchRole } = useAuth();
   const { isDark } = useTheme();
   const [loading, setLoading] = useState(true);
   const [employee, setEmployee] = useState(null);
   const [employeeId, setEmployeeId] = useState(null);
   const [profilePicture, setProfilePicture] = useState(null);
-  const [availableTasks, setAvailableTasks] = useState([]);
+  const [allTasks, setAllTasks] = useState([]);
   const [assignedTasks, setAssignedTasks] = useState([]);
   const [activeTab, setActiveTab] = useState('available');
   const [assigning, setAssigning] = useState(null);
@@ -24,10 +24,42 @@ const EmployeeDashboardPage = () => {
   const [selectedTask, setSelectedTask] = useState(null);
   const [solution, setSolution] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreTasks, setHasMoreTasks] = useState(true);
+  const [nextPageToken, setNextPageToken] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
+    switchRole('employee');
     loadEmployeeData();
   }, [user]);
+
+  // Infinite scroll - load more when scrolling near bottom (optional - can also use Load More button)
+  useEffect(() => {
+    if (activeTab !== 'available' || !hasMoreTasks || loadingMore) return;
+
+    let ticking = false;
+    const handleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const scrollHeight = document.documentElement.scrollHeight;
+          const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+          const clientHeight = document.documentElement.clientHeight;
+
+          // Load more when user is 300px from bottom
+          if (scrollHeight - scrollTop - clientHeight < 300 && hasMoreTasks && !loadingMore) {
+            loadMoreTasks();
+          }
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, hasMoreTasks, loadingMore, nextPageToken]);
 
   const loadEmployeeData = async () => {
     if (!user?.uid) return;
@@ -38,13 +70,16 @@ const EmployeeDashboardPage = () => {
       setEmployeeId(id);
 
       if (id) {
-        const [employeeData, availableTasksData, assignedTasksData] = await Promise.all([
+        const [employeeData, tasksData, assignedTasksData] = await Promise.all([
           apiService.getEmployeeDetails(id),
-          apiService.getUnassignedTasks(),
+          apiService.getAllTasks(1, 6), // Load first 6 tasks
           apiService.getAssignedTasks(id),
         ]);
         setEmployee(employeeData);
-        setAvailableTasks(availableTasksData || []);
+        setAllTasks(tasksData.tasks || []);
+        setHasMoreTasks(tasksData.hasMore || false);
+        setNextPageToken(tasksData.nextPageToken || null);
+        setCurrentPage(1);
         setAssignedTasks(assignedTasksData || []);
 
         try {
@@ -61,6 +96,23 @@ const EmployeeDashboardPage = () => {
     }
   };
 
+  const loadMoreTasks = async () => {
+    if (loadingMore || !hasMoreTasks || !nextPageToken) return;
+
+    try {
+      setLoadingMore(true);
+      const tasksData = await apiService.getAllTasks(currentPage + 1, 6, nextPageToken);
+      setAllTasks(prev => [...prev, ...(tasksData.tasks || [])]);
+      setHasMoreTasks(tasksData.hasMore || false);
+      setNextPageToken(tasksData.nextPageToken || null);
+      setCurrentPage(prev => prev + 1);
+    } catch (error) {
+      console.error('Error loading more tasks:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   const handleAssignTask = async (taskId) => {
     if (!employeeId) return;
 
@@ -68,6 +120,8 @@ const EmployeeDashboardPage = () => {
     try {
       await apiService.assignTask(taskId, employeeId);
       await apiService.updateTaskStatus(taskId, 'assigned', 'Task assigned to employee');
+      
+      // Reload all data including tasks and assigned tasks
       await loadEmployeeData();
     } catch (error) {
       console.error('Error assigning task:', error);
@@ -164,6 +218,7 @@ const EmployeeDashboardPage = () => {
       width: '100%',
       margin: '0 auto',
       padding: '40px clamp(24px, 5vw, 48px)',
+      paddingBottom: '120px', // Extra padding to prevent footer overlap
       flex: 1,
     },
     profileHeader: {
@@ -388,13 +443,18 @@ const EmployeeDashboardPage = () => {
     );
   }
 
-  const currentTasks = activeTab === 'available' ? availableTasks : assignedTasks;
+  // Calculate stats from all tasks and assigned tasks
+  // Available = all unassigned pending tasks (counted from allTasks but we'll show total)
   const stats = {
-    available: availableTasks.length,
-    assigned: assignedTasks.filter(t => normalizeStatus(t.status) === 'assigned').length,
+    available: allTasks.length, // Total tasks available to view
     inProgress: assignedTasks.filter(t => normalizeStatus(t.status) === 'in_progress').length,
-    completed: assignedTasks.filter(t => normalizeStatus(t.status) === 'approved').length,
+    completed: assignedTasks.filter(t => {
+      const s = normalizeStatus(t.status);
+      return s === 'submitted' || s === 'reviewed' || s === 'approved';
+    }).length,
   };
+
+  const currentTasks = activeTab === 'available' ? allTasks : assignedTasks;
 
   return (
     <>
@@ -458,8 +518,7 @@ const EmployeeDashboardPage = () => {
           {/* Stats Grid */}
           <div style={styles.statsGrid}>
             {[
-              { label: 'Available Tasks', value: stats.available, icon: '🔍', color: isDark ? '#FFB84D' : '#FF6B35' },
-              { label: 'Assigned', value: stats.assigned, icon: '📋', color: isDark ? '#0A84FF' : '#007AFF' },
+              { label: 'All Tasks', value: stats.available, icon: '🔍', color: isDark ? '#FFB84D' : '#FF6B35' },
               { label: 'In Progress', value: stats.inProgress, icon: '🔄', color: isDark ? '#FFB84D' : '#FF9500' },
               { label: 'Completed', value: stats.completed, icon: '✓', color: isDark ? '#32D74B' : '#34C759' },
             ].map((stat, idx) => (
@@ -490,7 +549,7 @@ const EmployeeDashboardPage = () => {
               }}
               className={`tab-button ${activeTab === 'available' ? 'tab-active apple-tab-active' : 'apple-tab'}`}
             >
-              Available Tasks
+              All Tasks
             </button>
             <button
               onClick={() => setActiveTab('assigned')}
@@ -511,12 +570,12 @@ const EmployeeDashboardPage = () => {
                 {activeTab === 'available' ? '📭' : '📋'}
               </div>
               <h2 style={styles.emptyTitle} className="heading-2">
-                {activeTab === 'available' ? 'No available tasks' : 'No tasks assigned yet'}
+                {activeTab === 'available' ? 'No tasks found' : 'No tasks assigned yet'}
               </h2>
               <p style={styles.emptyText} className="body-regular">
                 {activeTab === 'available' 
                   ? 'Check back later for new opportunities'
-                  : 'Browse available tasks to get started'}
+                  : 'Browse all tasks to get started'}
               </p>
               {activeTab === 'assigned' && (
                 <Button
@@ -568,17 +627,33 @@ const EmployeeDashboardPage = () => {
                       </div>
                     </div>
                     {activeTab === 'available' && (
-                      <Button
-                        variant="primary"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleAssignTask(task.id);
-                        }}
-                        loading={assigning === task.id}
-                        style={{ width: '100%', height: '40px' }}
-                      >
-                        {assigning === task.id ? 'Claiming...' : 'Claim Task'}
-                      </Button>
+                      <>
+                        {(!task.isAssigned && normalizeStatus(task.status) === 'pending') ? (
+                          <Button
+                            variant="primary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAssignTask(task.id);
+                            }}
+                            loading={assigning === task.id}
+                            style={{ width: '100%', height: '40px', marginTop: '16px' }}
+                          >
+                            {assigning === task.id ? 'Claiming...' : 'Claim Task'}
+                          </Button>
+                        ) : (
+                          <div style={{ 
+                            padding: '12px', 
+                            background: isDark ? 'rgba(255, 184, 77, 0.1)' : 'rgba(255, 107, 53, 0.1)',
+                            borderRadius: '8px',
+                            textAlign: 'center',
+                            fontSize: '14px',
+                            color: isDark ? '#FFB84D' : '#FF6B35',
+                            marginTop: '16px'
+                          }}>
+                            {task.isAssigned ? 'Already Claimed' : 'Not Available'}
+                          </div>
+                        )}
+                      </>
                     )}
                     {activeTab === 'assigned' && (
                       <div style={{ display: 'flex', gap: '8px' }}>
@@ -623,6 +698,38 @@ const EmployeeDashboardPage = () => {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Load More Button for Available Tasks */}
+          {activeTab === 'available' && currentTasks.length > 0 && (
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              marginTop: '32px',
+              paddingBottom: '80px' // Add padding to prevent footer overlap
+            }}>
+              {hasMoreTasks ? (
+                <Button
+                  variant="secondary"
+                  onClick={loadMoreTasks}
+                  loading={loadingMore}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? 'Loading...' : 'Load More Tasks'}
+                </Button>
+              ) : (
+                <div style={{
+                  padding: '16px 32px',
+                  borderRadius: '12px',
+                  background: isDark ? 'rgba(255, 184, 77, 0.1)' : 'rgba(255, 107, 53, 0.1)',
+                  color: isDark ? '#FFB84D' : '#FF6B35',
+                  fontSize: '15px',
+                  fontWeight: 500
+                }}>
+                  All tasks loaded
+                </div>
+              )}
             </div>
           )}
         </div>

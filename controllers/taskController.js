@@ -524,7 +524,7 @@ exports.updateTask = async (req, res) => {
     }
 };
 
-// Get all unassigned tasks
+// Get all unassigned tasks (deprecated - use getAllTasks instead)
 exports.fetchAllNotAssignedTasks = async (req, res) => {
     try {
         const snapshot = await db.collection('tasks')
@@ -541,5 +541,64 @@ exports.fetchAllNotAssignedTasks = async (req, res) => {
     } catch (error) {
         console.error('Error fetching tasks:', error.message);
         res.status(500).json({ error: 'Failed to fetch not assigned tasks' });
+    }
+};
+
+// Get all tasks with pagination (for employees to see all tasks)
+exports.getAllTasks = async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 6;
+        const lastDocId = req.query.lastDocId || null;
+
+        let query = db.collection('tasks')
+            .orderBy('dateCreated', 'desc');
+
+        // If pagination token exists, start from that document
+        if (lastDocId) {
+            try {
+                const lastDoc = await db.collection('tasks').doc(lastDocId).get();
+                if (lastDoc.exists) {
+                    query = query.startAfter(lastDoc);
+                }
+            } catch (err) {
+                console.error('Error getting lastDoc for pagination:', err);
+                // Continue without pagination token if error
+            }
+        }
+
+        // Get one extra document to check if there are more
+        const snapshot = await query.limit(limit + 1).get();
+
+        const tasks = [];
+        let nextPageToken = null;
+
+        snapshot.forEach((doc, index) => {
+            if (index < limit) {
+                tasks.push(formatTaskFromFirestore(doc));
+            } else {
+                // This is the extra document, use it as pagination token
+                nextPageToken = doc.id;
+            }
+        });
+
+        res.status(200).json({
+            tasks,
+            hasMore: snapshot.docs.length > limit,
+            nextPageToken: nextPageToken,
+            page: parseInt(req.query.page) || 1,
+            limit
+        });
+    } catch (error) {
+        console.error('Error fetching all tasks:', error.message);
+        
+        // If error is due to missing index, provide helpful error message
+        if (error.message && error.message.includes('index')) {
+            return res.status(500).json({ 
+                error: 'Database index required. Please create a composite index in Firebase Console for tasks collection on dateCreated (descending).',
+                details: error.message
+            });
+        }
+        
+        res.status(500).json({ error: 'Failed to fetch tasks', details: error.message });
     }
 };

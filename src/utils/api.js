@@ -13,6 +13,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Include cookies in requests
 });
 
 // Request interceptor to add auth token
@@ -78,6 +79,27 @@ export const apiService = {
   // Auth
   getUserId: async (email) => {
     const response = await api.get('/users/getUserId', { params: { email } });
+    return response.data;
+  },
+
+  signup: async (email, password, displayName) => {
+    const response = await api.post('/users/signup', { email, password, displayName });
+    return response.data;
+  },
+
+  login: async (email, password) => {
+    const response = await api.post('/users/login', { email, password });
+    return response.data;
+  },
+
+  verifyToken: async (idToken) => {
+    const response = await api.post('/users/verify-token', { idToken });
+    return response.data;
+  },
+
+  // Legacy method - kept for backwards compatibility
+  googleAuth: async (idToken, displayName, email, photoURL) => {
+    const response = await api.post('/users/google-auth', { idToken, displayName, email, photoURL });
     return response.data;
   },
 
@@ -210,6 +232,13 @@ export const apiService = {
 
   getUnassignedTasks: async () => {
     const response = await api.get('/tasks/notassigned');
+    return response.data;
+  },
+
+  getAllTasks: async (page = 1, limit = 6, lastDocId = null) => {
+    const params = { page, limit };
+    if (lastDocId) params.lastDocId = lastDocId;
+    const response = await api.get('/tasks/all', { params });
     return response.data;
   },
 

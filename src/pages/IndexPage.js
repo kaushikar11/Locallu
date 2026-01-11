@@ -6,18 +6,24 @@ import { useTheme } from '../contexts/ThemeContext';
 
 const IndexPage = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, switchRole, loading: authLoading } = useAuth();
   const { isDark } = useTheme();
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
 
   useEffect(() => {
+    // Wait for auth context to finish loading before checking authentication
+    if (authLoading) {
+      return;
+    }
+    
+    // Only redirect if auth has finished loading and user is not authenticated
     if (!isAuthenticated || !user) {
-      navigate('/index');
+      navigate('/index', { replace: true });
       return;
     }
     setLoading(false);
-  }, [isAuthenticated, user, navigate]);
+  }, [isAuthenticated, user, navigate, authLoading]);
 
   const handleRoleSelection = async (role) => {
     if (!user || !user.email) {
@@ -27,6 +33,7 @@ const IndexPage = () => {
 
     setChecking(true);
     try {
+      switchRole(role); // Set the role in context
       if (role === 'business') {
         const emailCheck = await apiService.checkBusinessEmail(user.email);
         if (emailCheck.exists) {

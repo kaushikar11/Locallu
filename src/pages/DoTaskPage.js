@@ -150,6 +150,7 @@ const DoTaskPage = () => {
       width: '100%',
       margin: '0 auto',
       padding: '40px clamp(24px, 5vw, 48px)',
+      paddingBottom: '120px', // Extra padding to prevent footer overlap
       flex: 1,
     },
     backButton: {
@@ -307,13 +308,13 @@ const DoTaskPage = () => {
       display: 'flex',
       gap: '12px',
       padding: '24px',
-      background: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.8)',
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
-      borderTop: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'}`,
-      position: 'sticky',
-      bottom: 0,
-      zIndex: 100,
+      background: isDark ? '#1C1C1E' : '#FFFFFF',
+      borderRadius: '16px',
+      boxShadow: isDark 
+        ? '0 2px 12px rgba(0, 0, 0, 0.6)' 
+        : '0 2px 12px rgba(0, 0, 0, 0.06)',
+      marginTop: '32px',
+      marginBottom: '80px', // Add margin to prevent footer overlap
     },
   };
 
@@ -351,13 +352,9 @@ const DoTaskPage = () => {
           color: ${isDark ? '#FFB84D' : '#FF6B35'} !important;
           transform: translateX(-4px) !important;
         }
-        @media (max-width: 768px) {
-          .task-actions-bar {
-            position: fixed !important;
-            bottom: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-          }
+        .task-actions-bar {
+          position: relative !important;
+          margin-bottom: 80px !important;
         }
       `}</style>
       <div style={styles.root}>

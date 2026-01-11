@@ -1,5 +1,6 @@
-const { db, bucket } = require('../config/firebase');
+const { db } = require('../config/firebase');
 const Employee = require('../models/employeeModel');
+const { uploadProfilePicture } = require('../utils/cloudinary');
 
 // Add a new employee
 exports.addEmployee = async (req, res) => {
@@ -30,24 +31,22 @@ exports.uploadImage = async (req, res) => {
             return res.status(400).send('No file uploaded.');
         }
 
-        const blob = bucket.file(`employees/${employeeId}/profilePicture/profilePicture.jpg`);
-        const blobStream = blob.createWriteStream({
-            metadata: {
-                contentType: file.mimetype
-            }
+        // Upload to Cloudinary
+        const publicId = `employee-${employeeId}`;
+        const imageUrl = await uploadProfilePicture(
+            file.buffer,
+            'locallu-dps',
+            publicId,
+            file.mimetype
+        );
+
+        // Update the employee profile picture URL in Firestore
+        const employeeRef = db.collection('employees').doc(employeeId);
+        await employeeRef.update({
+            photoURL: imageUrl
         });
 
-        blobStream.on('error', (err) => {
-            console.error('Error uploading image:', err);
-            res.status(500).send('Error uploading image.');
-        });
-
-        blobStream.on('finish', () => {
-            const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
-            res.status(200).json({ imageUrl: publicUrl });
-        });
-
-        blobStream.end(file.buffer);
+        res.status(200).json({ imageUrl });
     } catch (error) {
         console.error('Error uploading employee image:', error);
         res.status(500).send('Internal Server Error');
@@ -103,13 +102,16 @@ exports.getProfilePicture = async (req, res) => {
     const { employeeId } = req.params;
 
     try {
-        const file = bucket.file(`employees/${employeeId}/profilePicture/profilePicture.jpg`);
-        const [url] = await file.getSignedUrl({
-            action: 'read',
-            expires: '03-09-2491' // Adjust expiration date as needed
-        });
-        console.log(`Profile picture URL: ${url}`);
-        res.json({ profilePictureUrl: url });
+        // Get employee data to retrieve photoURL from Firestore
+        const employeeDoc = await db.collection('employees').doc(employeeId).get();
+        if (!employeeDoc.exists) {
+            return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        const employeeData = employeeDoc.data();
+        const photoURL = employeeData.photoURL || null;
+        
+        res.json({ profilePictureUrl: photoURL });
     } catch (error) {
         console.error('Error fetching profile picture:', error);
         res.status(500).send('Internal Server Error');
@@ -140,37 +142,30 @@ exports.updateProfilePicture = async (req, res) => {
         const file = req.file;
 
         if (!file) {
-            return res.status(400).send('No file uploaded.');
+            return res.status(400).json({ error: 'No file uploaded.' });
         }
 
-        // Define the storage path
-        const blob = bucket.file(`employees/${employeeId}/profilePicture/profilePicture.jpg`);
-        const blobStream = blob.createWriteStream({
-            metadata: {
-                contentType: file.mimetype
-            }
+        // Upload to Cloudinary
+        const publicId = `employee-${employeeId}`;
+        const imageUrl = await uploadProfilePicture(
+            file.buffer,
+            'locallu-dps',
+            publicId,
+            file.mimetype
+        );
+
+        // Update the employee profile picture URL in Firestore
+        const employeeRef = db.collection('employees').doc(employeeId);
+        await employeeRef.update({
+            photoURL: imageUrl
         });
 
-        blobStream.on('error', (err) => {
-            console.error('Error uploading image:', err);
-            res.status(500).send('Error uploading image.');
+        res.status(200).json({ 
+            message: 'Profile picture updated successfully', 
+            imageUrl: imageUrl 
         });
-
-        blobStream.on('finish', async () => {
-            const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
-
-            // Update the employee profile picture URL in the Firestore
-            const employeeRef = db.collection('employees').doc(employeeId);
-            await employeeRef.update({
-                photoURL: publicUrl
-            });
-
-            res.status(200).json({ message: 'Profile picture updated successfully', imageUrl: publicUrl });
-        });
-
-        blobStream.end(file.buffer);
     } catch (error) {
         console.error('Error updating profile picture:', error);
-        res.status(500).send('Internal Server Error');
+        res.status(500).json({ error: 'Internal Server Error' });
     }
 };

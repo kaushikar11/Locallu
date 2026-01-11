@@ -1,6 +1,6 @@
 // models/businessModel.js
 
-const { db,bucket } = require('../config/firebase');
+const { db } = require('../config/firebase');
 
 class Business {
     constructor(data) {

@@ -46,29 +46,63 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [currentRole, setCurrentRole] = useState(() => {
+    // Initialize from localStorage
+    return localStorage.getItem('currentRole') || null;
+  });
   const refreshIntervalRef = useRef(null);
   const activityTimeoutRef = useRef(null);
 
-  // Initialize from localStorage on mount
+  // Helper function to get cookie value
+  const getCookie = (name) => {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return null;
+  };
+
+  // Initialize from localStorage and cookies on mount
   useEffect(() => {
-    const storedToken = localStorage.getItem('token');
+    // Try to get token from cookie first, then localStorage
+    let storedToken = getCookie('jwt_token') || localStorage.getItem('token');
     const storedUser = localStorage.getItem('user');
 
-    if (storedToken && storedUser) {
+    if (storedToken) {
       try {
         // Verify token is not expired
         if (!isTokenExpired(storedToken)) {
           setToken(storedToken);
-          setUser(JSON.parse(storedUser));
+          // If we have user in localStorage, use it; otherwise decode from token
+          if (storedUser) {
+            setUser(JSON.parse(storedUser));
+          } else {
+            const decoded = decodeJWT(storedToken);
+            if (decoded) {
+              const userData = {
+                uid: decoded.uid,
+                email: decoded.email,
+                displayName: decoded.displayName,
+                photoURL: decoded.photoURL
+              };
+              setUser(userData);
+              localStorage.setItem('user', JSON.stringify(userData));
+            }
+          }
+          // Sync token to localStorage if it came from cookie
+          if (!localStorage.getItem('token')) {
+            localStorage.setItem('token', storedToken);
+          }
         } else {
-          // Token expired - clear storage
+          // Token expired - clear storage and cookies
           localStorage.removeItem('token');
           localStorage.removeItem('user');
+          document.cookie = 'jwt_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
         }
       } catch (error) {
         console.error('Error decoding token:', error);
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        document.cookie = 'jwt_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
       }
     }
     setLoading(false);
@@ -110,6 +144,7 @@ export const AuthProvider = ({ children }) => {
             setUser(response.user);
             localStorage.setItem('token', response.token);
             localStorage.setItem('user', JSON.stringify(response.user));
+            // Cookie is updated by backend
             console.log('✅ Token refreshed automatically');
           }
         } catch (error) {
@@ -150,6 +185,7 @@ export const AuthProvider = ({ children }) => {
               setUser(response.user);
               localStorage.setItem('token', response.token);
               localStorage.setItem('user', JSON.stringify(response.user));
+              // Cookie is updated by backend
             }
           } catch (error) {
             console.error('Failed to extend session:', error);
@@ -188,6 +224,7 @@ export const AuthProvider = ({ children }) => {
         setUser(userData);
         localStorage.setItem('token', newToken);
         localStorage.setItem('user', JSON.stringify(userData));
+        // Cookie is set by backend, but ensure it's synced
         return { success: true, token: newToken, user: userData };
       } else {
         throw new Error('Invalid response from server');
@@ -205,6 +242,8 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    // Clear cookie
+    document.cookie = 'jwt_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     
     // Clear intervals
     if (refreshIntervalRef.current) {
@@ -225,6 +264,7 @@ export const AuthProvider = ({ children }) => {
         setUser(response.user);
         localStorage.setItem('token', response.token);
         localStorage.setItem('user', JSON.stringify(response.user));
+        // Cookie is updated by backend
         return { success: true, token: response.token, user: response.user };
       }
       return { success: false, error: 'Invalid refresh response' };
@@ -239,6 +279,26 @@ export const AuthProvider = ({ children }) => {
   const updateUser = (userData) => {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
+    // Also update token if provided
+    const currentToken = localStorage.getItem('token');
+    if (currentToken) {
+      setToken(currentToken);
+    }
+  };
+
+  const switchRole = (role) => {
+    if (role === 'business' || role === 'employee') {
+      setCurrentRole(role);
+      localStorage.setItem('currentRole', role);
+    }
+  };
+
+  // Helper to set both token and user (for after authentication)
+  const setAuth = (newToken, userData) => {
+    setToken(newToken);
+    setUser(userData);
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('user', JSON.stringify(userData));
   };
 
   const value = {
@@ -249,6 +309,9 @@ export const AuthProvider = ({ children }) => {
     logout,
     refreshToken,
     updateUser,
+    setAuth, // Expose setAuth for updating both token and user
+    currentRole,
+    switchRole,
     isAuthenticated: !!token && !!user && !isTokenExpired(token),
   };
 

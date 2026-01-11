@@ -1,4 +1,4 @@
-const { db, bucket } = require('../config/firebase');
+const { db } = require('../config/firebase');
 
 class Employee {
     constructor(data) {

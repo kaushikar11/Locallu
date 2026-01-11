@@ -1,19 +1,91 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../utils/api';
 import { useTheme } from '../contexts/ThemeContext';
+import { auth } from '../config/firebase';
+import { 
+  signInWithRedirect, 
+  getRedirectResult, 
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile
+} from 'firebase/auth';
 import Footer from '../components/Footer/Footer';
 
 const HomePage = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { setAuth } = useAuth();
   const { isDark } = useTheme();
   const [authMode, setAuthMode] = useState('login');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Check for Google redirect result on mount
+  useEffect(() => {
+    const checkGoogleRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result && result.user) {
+          setLoading(true);
+          console.log('[AUTH-FRONTEND] Google redirect result received');
+          const user = result.user;
+          
+          // Get ID token from Firebase
+          const idToken = await user.getIdToken();
+          console.log('[AUTH-FRONTEND] Google ID token obtained');
+          
+          // Send ID token to backend for verification
+          const response = await apiService.verifyToken(idToken);
+          
+          if (response.token && response.user) {
+            console.log('[AUTH-FRONTEND] Google auth success:', { email: response.user.email, uid: response.user.uid });
+            // Use setAuth to update both token and user
+            setAuth(response.token, response.user);
+            setLoading(false);
+            window.location.href = '/select-role';
+          } else {
+            console.log('[AUTH-FRONTEND] Google auth failed - no token');
+            setError('Failed to authenticate with Google');
+            setLoading(false);
+          }
+        }
+      } catch (err) {
+        console.log('[AUTH-FRONTEND] Google redirect error:', err.message || err);
+        console.error('Google redirect error:', err);
+        setError(err.message || 'Failed to complete Google sign-in');
+        setLoading(false);
+      }
+    };
+    
+    checkGoogleRedirect();
+  }, [setAuth]);
+
+  // Google OAuth handler
+  const handleGoogleSignIn = async () => {
+    console.log('[AUTH-FRONTEND] Google sign-in initiated');
+    setLoading(true);
+    setError('');
+    
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope('email');
+      provider.addScope('profile');
+      
+      // Use redirect instead of popup to avoid COOP issues
+      await signInWithRedirect(auth, provider);
+      // Navigation will happen after redirect result is processed
+    } catch (err) {
+      console.log('[AUTH-FRONTEND] Google sign-in initiation error:', err.message || err);
+      console.error('Google sign-in error:', err);
+      setError(err.message || 'Failed to initiate Google sign-in');
+      setLoading(false);
+    }
+  };
 
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
@@ -22,20 +94,106 @@ const HomePage = () => {
       return;
     }
 
+    if (authMode === 'signup' && (!password || password.length < 6)) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    if (authMode === 'login' && !password) {
+      setError('Password is required for login');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
-      const result = await login(email);
-      if (result.success) {
-        navigate('/select-role');
+      let firebaseUser;
+      
+      if (authMode === 'signup') {
+        // Use Firebase Client SDK to create user
+        console.log('[AUTH-FRONTEND] Signup attempt:', email);
+        try {
+          firebaseUser = await createUserWithEmailAndPassword(auth, email, password);
+          console.log('[AUTH-FRONTEND] User created in Firebase:', firebaseUser.user.uid);
+          
+          // Update display name if provided
+          if (name && firebaseUser.user) {
+            await updateProfile(firebaseUser.user, { displayName: name });
+            console.log('[AUTH-FRONTEND] Display name updated');
+          }
+        } catch (signupError) {
+          console.error('[AUTH-FRONTEND] Signup error:', signupError.code, signupError.message);
+          
+          // Handle Firebase Auth errors
+          if (signupError.code === 'auth/email-already-in-use') {
+            setError('Email already registered. Please use the "Log in" tab instead.');
+            setLoading(false);
+            return;
+          } else if (signupError.code === 'auth/invalid-email') {
+            setError('Invalid email format');
+            setLoading(false);
+            return;
+          } else if (signupError.code === 'auth/weak-password') {
+            setError('Password is too weak. Please use at least 6 characters.');
+            setLoading(false);
+            return;
+          } else {
+            setError(signupError.message || 'Failed to create account. Please try again.');
+            setLoading(false);
+            return;
+          }
+        }
       } else {
-        setError(result.error || 'Failed to login. Please try again.');
+        // Use Firebase Client SDK to sign in
+        console.log('[AUTH-FRONTEND] Login attempt:', email);
+        try {
+          firebaseUser = await signInWithEmailAndPassword(auth, email, password);
+          console.log('[AUTH-FRONTEND] User signed in to Firebase:', firebaseUser.user.uid);
+        } catch (loginError) {
+          console.error('[AUTH-FRONTEND] Login error:', loginError.code, loginError.message);
+          
+          // Handle Firebase Auth errors
+          if (loginError.code === 'auth/user-not-found' || loginError.code === 'auth/wrong-password' || loginError.code === 'auth/invalid-credential') {
+            setError('Invalid email or password');
+            setLoading(false);
+            return;
+          } else if (loginError.code === 'auth/invalid-email') {
+            setError('Invalid email format');
+            setLoading(false);
+            return;
+          } else {
+            setError(loginError.message || 'Failed to sign in. Please try again.');
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
+      // Get ID token from Firebase
+      const idToken = await firebaseUser.user.getIdToken();
+      console.log('[AUTH-FRONTEND] ID token obtained');
+      
+      // Send ID token to backend for verification
+      const response = await apiService.verifyToken(idToken);
+      
+      if (response.token && response.user) {
+        console.log('[AUTH-FRONTEND] Auth success:', { email: response.user.email, uid: response.user.uid });
+        setAuth(response.token, response.user);
+        setEmail('');
+        setPassword('');
+        setName('');
+        setError('');
+        setLoading(false);
+        window.location.href = '/select-role';
+      } else {
+        setError('Failed to authenticate. Please try again.');
+        setLoading(false);
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
-      console.error('Login error:', err);
-    } finally {
+      console.error('[AUTH-FRONTEND] Unexpected error:', err);
+      const errorMsg = err.response?.data?.error || err.message || `An error occurred during ${authMode}. Please try again.`;
+      setError(errorMsg);
       setLoading(false);
     }
   };
@@ -427,6 +585,44 @@ const HomePage = () => {
                     {error && <p style={styles.errorText}>{error}</p>}
                   </div>
 
+                  <div>
+                    <label style={styles.label} htmlFor="password">
+                      Password {authMode === 'login' && <span style={{ fontSize: '12px', fontWeight: 400, opacity: 0.7 }}>(optional - for legacy accounts)</span>}
+                    </label>
+                    <input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setError('');
+                      }}
+                      placeholder={authMode === 'signup' ? 'At least 6 characters' : 'Enter your password (optional)'}
+                      required={authMode === 'signup'}
+                      style={{
+                        ...styles.input,
+                        ...(error ? { borderColor: isDark ? '#FF453A' : '#FF3B30' } : {}),
+                      }}
+                      className={`apple-input landing-input ${error ? 'apple-input-error' : ''}`}
+                      onFocus={(e) => {
+                        if (!error) {
+                          e.target.style.background = isDark ? '#1C1C1E' : '#FFFFFF';
+                          e.target.style.borderColor = isDark ? '#FFB84D' : '#FF6B35';
+                          e.target.style.boxShadow = isDark 
+                            ? '0 0 0 4px rgba(255, 184, 77, 0.1)' 
+                            : '0 0 0 4px rgba(255, 107, 53, 0.1)';
+                        }
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.background = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)';
+                        e.target.style.borderColor = error 
+                          ? (isDark ? '#FF453A' : '#FF3B30') 
+                          : 'transparent';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                    />
+                  </div>
+
                   <button
                     type="submit"
                     disabled={loading}
@@ -491,6 +687,69 @@ const HomePage = () => {
                     By continuing, you agree to Locallu's Terms and acknowledge the Privacy Policy.
                   </p>
                 </form>
+
+                {/* Divider */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  margin: '24px 0',
+                  color: isDark ? '#6B6B6B' : '#9B9B9B',
+                  fontSize: '14px'
+                }}>
+                  <div style={{ flex: 1, height: '1px', background: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' }}></div>
+                  <span style={{ padding: '0 16px' }}>or</span>
+                  <div style={{ flex: 1, height: '1px', background: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)' }}></div>
+                </div>
+
+                {/* Google Sign In Button */}
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  disabled={loading}
+                  style={{
+                    width: '100%',
+                    padding: '14px 28px',
+                    fontSize: '16px',
+                    fontWeight: 500,
+                    fontFamily: 'inherit',
+                    borderRadius: '12px',
+                    border: `1.5px solid ${isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'}`,
+                    background: isDark ? '#1C1C1E' : '#FFFFFF',
+                    color: isDark ? '#FFFFFF' : '#1A1A1A',
+                    cursor: loading ? 'wait' : 'pointer',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '12px',
+                    opacity: loading ? 0.7 : 1,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!loading) {
+                      e.target.style.transform = 'translateY(-2px)';
+                      e.target.style.boxShadow = isDark 
+                        ? '0 4px 16px rgba(0, 0, 0, 0.4)' 
+                        : '0 4px 16px rgba(0, 0, 0, 0.08)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.transform = 'translateY(0)';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                  onMouseDown={(e) => {
+                    e.target.style.transform = 'scale(0.98)';
+                  }}
+                  onMouseUp={(e) => {
+                    e.target.style.transform = 'translateY(-2px)';
+                  }}
+                >
+                  <img 
+                    src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" 
+                    alt="Google logo" 
+                    style={{ width: '20px', height: '20px' }} 
+                  />
+                  Sign in with Google
+                </button>
               </div>
             </div>
 

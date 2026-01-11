@@ -14,6 +14,7 @@ import BusinessEditPage from './pages/BusinessEditPage';
 import EmployeeEditPage from './pages/EmployeeEditPage';
 import BusinessTaskPage from './pages/BusinessTaskPage';
 import DoTaskPage from './pages/DoTaskPage';
+import ProfileEditPage from './pages/ProfileEditPage';
 
 // Layout
 import Layout from './components/Layout/Layout';
@@ -107,6 +108,16 @@ function App() {
           element={
             <ProtectedRoute>
               <DoTaskPage />
+            </ProtectedRoute>
+          } 
+        />
+        
+        {/* Profile Edit Route (works for both business and employee) */}
+        <Route 
+          path="profile/edit" 
+          element={
+            <ProtectedRoute>
+              <ProfileEditPage />
             </ProtectedRoute>
           } 
         />

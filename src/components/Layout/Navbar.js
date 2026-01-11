@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
 const Navbar = () => {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, logout, currentRole, switchRole } = useAuth();
   const { toggleTheme, isDark } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -94,6 +94,19 @@ const Navbar = () => {
       fontFamily: 'inherit',
       transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
     },
+    roleSwitcher: {
+      padding: '8px 16px',
+      borderRadius: '10px',
+      border: 'none',
+      background: isDark ? 'rgba(255, 184, 77, 0.15)' : 'rgba(255, 107, 53, 0.15)',
+      color: isDark ? '#FFB84D' : '#FF6B35',
+      fontSize: '13px',
+      fontWeight: 600,
+      cursor: 'pointer',
+      fontFamily: 'inherit',
+      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+      textTransform: 'capitalize',
+    },
   };
 
   return (
@@ -135,6 +148,29 @@ const Navbar = () => {
           </button>
           {isAuthenticated && user && (
             <>
+              <button
+                onClick={() => {
+                  const newRole = currentRole === 'business' ? 'employee' : 'business';
+                  switchRole(newRole);
+                  navigate(newRole === 'business' ? '/business/dashboard' : '/employee/dashboard');
+                }}
+                style={styles.roleSwitcher}
+                onMouseEnter={(e) => {
+                  e.target.style.background = isDark 
+                    ? 'rgba(255, 184, 77, 0.2)' 
+                    : 'rgba(255, 107, 53, 0.2)';
+                  e.target.style.transform = 'translateY(-1px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = isDark 
+                    ? 'rgba(255, 184, 77, 0.15)' 
+                    : 'rgba(255, 107, 53, 0.15)';
+                  e.target.style.transform = 'translateY(0)';
+                }}
+                title={`Switch to ${currentRole === 'business' ? 'Employee' : 'Business'} view`}
+              >
+                {currentRole === 'business' ? '👔 Business' : '👤 Employee'} ⇄
+              </button>
               <span style={styles.userText}>
                 {user.displayName || user.email}
               </span>

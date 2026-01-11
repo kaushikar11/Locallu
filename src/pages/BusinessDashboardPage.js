@@ -10,7 +10,7 @@ import Footer from '../components/Footer/Footer';
 
 const BusinessDashboardPage = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, switchRole } = useAuth();
   const { isDark } = useTheme();
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState([]);
@@ -29,6 +29,7 @@ const BusinessDashboardPage = () => {
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
+    switchRole('business');
     loadBusinessData();
   }, [user]);
 
@@ -160,6 +161,7 @@ const BusinessDashboardPage = () => {
   const stats = {
     total: tasks.length,
     pending: tasks.filter(t => normalizeStatus(t.status) === 'pending').length,
+    assigned: tasks.filter(t => normalizeStatus(t.status) === 'assigned').length,
     inProgress: tasks.filter(t => normalizeStatus(t.status) === 'in_progress').length,
     submitted: tasks.filter(t => {
       const s = normalizeStatus(t.status);
@@ -226,21 +228,34 @@ const BusinessDashboardPage = () => {
     editButton: {
       marginLeft: 'auto',
     },
-    statsGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-      gap: '20px',
-      marginBottom: '48px',
-    },
-    statCard: {
+    statsCard: {
       background: isDark ? '#1C1C1E' : '#FFFFFF',
       padding: '24px',
       borderRadius: '16px',
-      borderLeft: `4px solid ${isDark ? '#FFB84D' : '#FF6B35'}`,
       boxShadow: isDark 
-        ? '0 2px 8px rgba(0, 0, 0, 0.6)' 
-        : '0 2px 8px rgba(0, 0, 0, 0.04)',
+        ? '0 2px 12px rgba(0, 0, 0, 0.3)' 
+        : '0 2px 12px rgba(0, 0, 0, 0.06)',
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    },
+    statsTitle: {
+      fontSize: '20px',
+      fontWeight: 600,
+      color: isDark ? '#FFFFFF' : '#1A1A1A',
+      marginBottom: '20px',
+    },
+    statItem: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '16px 0',
+      borderBottom: `1px solid ${isDark ? '#2C2C2E' : '#E8E8E8'}`,
+    },
+    statItemLast: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '16px 0',
+      borderBottom: 'none',
     },
     statIcon: {
       width: '40px',
@@ -419,7 +434,16 @@ const BusinessDashboardPage = () => {
             ? 'rgba(255, 184, 77, 0.1)' 
             : 'rgba(255, 107, 53, 0.1)'} !important;
         }
+        .dashboard-container {
+          display: grid;
+          grid-template-columns: 1fr 320px;
+          gap: 32px;
+          align-items: start;
+        }
         @media (max-width: 1024px) {
+          .dashboard-container {
+            grid-template-columns: 1fr !important;
+          }
           .tasks-grid {
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)) !important;
           }
@@ -431,60 +455,35 @@ const BusinessDashboardPage = () => {
         }
       `}</style>
       <div style={styles.root}>
-        <div style={styles.container} className="animate-fade-in-up">
-          {/* Profile Header */}
-          <div style={styles.profileHeader} className="apple-card">
-            <img
-              src={profilePicture || `https://ui-avatars.com/api/?name=${business?.businessName}`}
-              alt={business?.businessName || 'Business'}
-              style={styles.avatar}
-            />
-            <div style={styles.profileInfo}>
-              <h1 style={styles.profileName} className="heading-1">
-                {business?.businessName || 'Business Dashboard'}
-              </h1>
-              <p style={styles.profileDescription} className="body-regular">
-                {business?.companyDescription || 'Manage your tasks and grow your business'}
-              </p>
-            </div>
-            <div style={styles.editButton}>
-              <Button
-                variant="secondary"
-                onClick={() => navigate('/business/edit')}
-              >
-                ✎ Edit Profile
-              </Button>
-            </div>
-          </div>
-
-          {/* Stats Grid */}
-          <div style={styles.statsGrid}>
-            {[
-              { label: 'Total Tasks', value: stats.total, icon: '📊', color: isDark ? '#FFB84D' : '#FF6B35' },
-              { label: 'Pending', value: stats.pending, icon: '⏳', color: isDark ? '#9B9B9B' : '#9B9B9B' },
-              { label: 'In Progress', value: stats.inProgress, icon: '🔄', color: isDark ? '#FFB84D' : '#FF9500' },
-              { label: 'To Review', value: stats.submitted, icon: '👀', color: '#5856D6' },
-              { label: 'Approved', value: stats.approved, icon: '✓', color: isDark ? '#32D74B' : '#34C759' },
-            ].map((stat, idx) => (
-              <div
-                key={idx}
-                style={{
-                  ...styles.statCard,
-                  borderLeftColor: stat.color,
-                }}
-                className="stat-card apple-card"
-              >
-                <div style={{...styles.statIcon, background: `${stat.color}20`, color: stat.color}}>
-                  {stat.icon}
-                </div>
-                <div style={styles.statValue}>{stat.value}</div>
-                <div style={styles.statLabel}>{stat.label}</div>
+        <div style={styles.container} className="animate-fade-in-up dashboard-container">
+          <div style={styles.mainContent}>
+            {/* Profile Header */}
+            <div style={styles.profileHeader} className="apple-card">
+              <img
+                src={profilePicture || `https://ui-avatars.com/api/?name=${business?.businessName}`}
+                alt={business?.businessName || 'Business'}
+                style={styles.avatar}
+              />
+              <div style={styles.profileInfo}>
+                <h1 style={styles.profileName} className="heading-1">
+                  {business?.businessName || 'Business Dashboard'}
+                </h1>
+                <p style={styles.profileDescription} className="body-regular">
+                  {business?.companyDescription || 'Manage your tasks and grow your business'}
+                </p>
               </div>
-            ))}
-          </div>
+              <div style={styles.editButton}>
+                <Button
+                  variant="secondary"
+                  onClick={() => navigate('/profile/edit')}
+                >
+                  ✎ Edit Profile
+                </Button>
+              </div>
+            </div>
 
-          {/* Actions Bar */}
-          <div style={styles.actionsBar}>
+            {/* Actions Bar */}
+            <div style={styles.actionsBar}>
             <div style={styles.searchContainer}>
               <span style={styles.searchIcon}>🔍</span>
               <input
@@ -569,6 +568,32 @@ const BusinessDashboardPage = () => {
               })}
             </div>
           )}
+          </div>
+
+          {/* Stats Sidebar */}
+          <div style={styles.statsSidebar}>
+            <div style={styles.statsCard} className="apple-card">
+              <h2 style={styles.statsTitle}>Statistics</h2>
+              <div style={styles.statItem}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', color: isDark ? '#ABABAB' : '#6B6B6B' }}>
+                  <span>📋</span>
+                  <span>Given Tasks</span>
+                </div>
+                <div style={{ fontSize: '24px', fontWeight: 700, color: isDark ? '#FFB84D' : '#FF6B35' }}>
+                  {stats.total}
+                </div>
+              </div>
+              <div style={styles.statItemLast}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', color: isDark ? '#ABABAB' : '#6B6B6B' }}>
+                  <span>✓</span>
+                  <span>Finished Tasks</span>
+                </div>
+                <div style={{ fontSize: '24px', fontWeight: 700, color: isDark ? '#FFB84D' : '#FF6B35' }}>
+                  {stats.approved}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Create Task Modal */}

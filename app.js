@@ -1,6 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const userRoutes = require('./routes/userRoutes');
 const businessRoutes = require('./routes/businessRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
@@ -11,15 +12,40 @@ const path = require('path');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Enable CORS for all routes
-app.use(cors());
+// Enable CORS for all routes (with credentials for cookies)
+app.use(cors({
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Set-Cookie']
+}));
+
+// Set headers to fix Cross-Origin-Opener-Policy issues
+app.use((req, res, next) => {
+  // Allow cross-origin requests for Firebase Auth redirects
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
+  next();
+});
+app.use(cookieParser());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use('/api/tasks', taskRoutes);
+
+// API Routes - Register before static file serving
 app.use('/api/users', userRoutes);
+app.use('/api/tasks', taskRoutes);
 app.use('/api/businesses', businessRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/home', homeRoutes);
+
+// Debug: Log all API route registrations
+console.log('✅ API Routes registered:');
+console.log('  - /api/users');
+console.log('  - /api/tasks');
+console.log('  - /api/businesses');
+console.log('  - /api/employees');
+console.log('  - /api/home');
 
 // Legacy routes for backward compatibility (redirect to React app)
 app.get('/redirect-to-task', (req, res) => {
