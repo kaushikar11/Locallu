@@ -1,15 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../utils/api';
 import { useTheme } from '../contexts/ThemeContext';
 import { auth } from '../config/firebase';
 import { 
-  signInWithRedirect, 
-  getRedirectResult, 
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithPopup,
   updateProfile
 } from 'firebase/auth';
 import Footer from '../components/Footer/Footer';
@@ -25,47 +24,7 @@ const HomePage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Check for Google redirect result on mount
-  useEffect(() => {
-    const checkGoogleRedirect = async () => {
-      try {
-        const result = await getRedirectResult(auth);
-        if (result && result.user) {
-          setLoading(true);
-          console.log('[AUTH-FRONTEND] Google redirect result received');
-          const user = result.user;
-          
-          // Get ID token from Firebase
-          const idToken = await user.getIdToken();
-          console.log('[AUTH-FRONTEND] Google ID token obtained');
-          
-          // Send ID token to backend for verification
-          const response = await apiService.verifyToken(idToken);
-          
-          if (response.token && response.user) {
-            console.log('[AUTH-FRONTEND] Google auth success:', { email: response.user.email, uid: response.user.uid });
-            // Use setAuth to update both token and user
-            setAuth(response.token, response.user);
-            setLoading(false);
-            window.location.href = '/select-role';
-          } else {
-            console.log('[AUTH-FRONTEND] Google auth failed - no token');
-            setError('Failed to authenticate with Google');
-            setLoading(false);
-          }
-        }
-      } catch (err) {
-        console.log('[AUTH-FRONTEND] Google redirect error:', err.message || err);
-        console.error('Google redirect error:', err);
-        setError(err.message || 'Failed to complete Google sign-in');
-        setLoading(false);
-      }
-    };
-    
-    checkGoogleRedirect();
-  }, [setAuth]);
-
-  // Google OAuth handler
+  // Google OAuth handler - Use popup instead of redirect
   const handleGoogleSignIn = async () => {
     console.log('[AUTH-FRONTEND] Google sign-in initiated');
     setLoading(true);
@@ -76,13 +35,41 @@ const HomePage = () => {
       provider.addScope('email');
       provider.addScope('profile');
       
-      // Use redirect instead of popup to avoid COOP issues
-      await signInWithRedirect(auth, provider);
-      // Navigation will happen after redirect result is processed
+      // Use popup instead of redirect
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      
+      console.log('[AUTH-FRONTEND] Google sign-in successful');
+      
+      // Get ID token from Firebase
+      const idToken = await user.getIdToken();
+      console.log('[AUTH-FRONTEND] Google ID token obtained');
+      
+      // Send ID token to backend for verification
+      const response = await apiService.verifyToken(idToken);
+      
+      if (response.token && response.user) {
+        console.log('[AUTH-FRONTEND] Google auth success:', { email: response.user.email, uid: response.user.uid });
+        setAuth(response.token, response.user);
+        setLoading(false);
+        navigate('/select-role');
+      } else {
+        console.log('[AUTH-FRONTEND] Google auth failed - no token');
+        setError('Failed to authenticate with Google');
+        setLoading(false);
+      }
     } catch (err) {
-      console.log('[AUTH-FRONTEND] Google sign-in initiation error:', err.message || err);
+      console.log('[AUTH-FRONTEND] Google sign-in error:', err.message || err);
       console.error('Google sign-in error:', err);
-      setError(err.message || 'Failed to initiate Google sign-in');
+      
+      // Handle specific popup errors
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError('Sign-in cancelled. Please try again.');
+      } else if (err.code === 'auth/popup-blocked') {
+        setError('Popup blocked by browser. Please allow popups and try again.');
+      } else {
+        setError(err.message || 'Failed to sign in with Google');
+      }
       setLoading(false);
     }
   };
@@ -111,7 +98,6 @@ const HomePage = () => {
       let firebaseUser;
       
       if (authMode === 'signup') {
-        // Use Firebase Client SDK to create user
         console.log('[AUTH-FRONTEND] Signup attempt:', email);
         try {
           firebaseUser = await createUserWithEmailAndPassword(auth, email, password);
@@ -145,7 +131,6 @@ const HomePage = () => {
           }
         }
       } else {
-        // Use Firebase Client SDK to sign in
         console.log('[AUTH-FRONTEND] Login attempt:', email);
         try {
           firebaseUser = await signInWithEmailAndPassword(auth, email, password);
@@ -185,7 +170,7 @@ const HomePage = () => {
         setName('');
         setError('');
         setLoading(false);
-        window.location.href = '/select-role';
+        navigate('/select-role');
       } else {
         setError('Failed to authenticate. Please try again.');
         setLoading(false);
@@ -539,9 +524,9 @@ const HomePage = () => {
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                      placeholder="Ada Lovelace"
-                      style={styles.input}
-                      className="apple-input landing-input"
+                        placeholder="Ada Lovelace"
+                        style={styles.input}
+                        className="apple-input landing-input"
                       />
                     </div>
                   )}
@@ -735,58 +720,56 @@ const HomePage = () => {
                   onMouseLeave={(e) => {
                     e.target.style.transform = 'translateY(0)';
                     e.target.style.boxShadow = 'none';
-                  }}
-                  onMouseDown={(e) => {
+                    }}
+                    onMouseDown={(e) => {
                     e.target.style.transform = 'scale(0.98)';
-                  }}
-                  onMouseUp={(e) => {
+                    }}
+                    onMouseUp={(e) => {
                     e.target.style.transform = 'translateY(-2px)';
-                  }}
-                >
-                  <img 
-                    src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" 
-                    alt="Google logo" 
-                    style={{ width: '20px', height: '20px' }} 
-                  />
-                  Sign in with Google
-                </button>
-              </div>
-            </div>
-
-            <div style={styles.featuresGrid}>
-              {[
-                { title: 'Automated Job Matching', description: 'AI-powered system matches you with the perfect tasks', icon: '🤖' },
-                { title: 'Quality Verified', description: 'On-chain language models ensure work quality', icon: '✓' },
-                { title: 'Custom Models', description: 'Upload your ML models and get paid when used', icon: '🧠' },
-                { title: 'Global Opportunities', description: 'Access jobs from anywhere in the world', icon: '🌍' },
-              ].map((feature, index) => (
-                <div 
-                  key={index} 
-                  style={{...styles.featureCard, animationDelay: `${0.5 + index * 0.1}s`}} 
-                  className="apple-card landing-feature-card animate-fade-in-up"
-                >
-                  <div style={styles.featureIcon}>{feature.icon}</div>
-                  <h3 style={styles.featureTitle}>{feature.title}</h3>
-                  <p style={styles.featureDesc}>{feature.description}</p>
-                </div>
-              ))}
-            </div>
-
-            <div style={styles.trustSection}>
-              <p style={{ marginBottom: '8px' }}>Trusted by freelancers and businesses worldwide</p>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '32px', flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 600 }}>✓ Secure Payments</span>
-                <span style={{ fontWeight: 600 }}>✓ Verified Profiles</span>
-                <span style={{ fontWeight: 600 }}>✓ 24/7 Support</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <Footer />
-      </div>
-    </>
-  );
-};
-
-export default HomePage;
+                    }}
+                    >
+                    <img
+                    src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                    alt="Google logo"
+                    style={{ width: '20px', height: '20px' }}
+                    />
+                    Sign in with Google
+                    </button>
+                    </div>
+                    </div>
+                            <div style={styles.featuresGrid}>
+                              {[
+                                { title: 'Automated Job Matching', description: 'AI-powered system matches you with the perfect tasks', icon: '🤖' },
+                                { title: 'Quality Verified', description: 'On-chain language models ensure work quality', icon: '✓' },
+                                { title: 'Custom Models', description: 'Upload your ML models and get paid when used', icon: '🧠' },
+                                { title: 'Global Opportunities', description: 'Access jobs from anywhere in the world', icon: '🌍' },
+                              ].map((feature, index) => (
+                                <div 
+                                  key={index} 
+                                  style={{...styles.featureCard, animationDelay: `${0.5 + index * 0.1}s`}} 
+                                  className="apple-card landing-feature-card animate-fade-in-up"
+                                >
+                                  <div style={styles.featureIcon}>{feature.icon}</div>
+                                  <h3 style={styles.featureTitle}>{feature.title}</h3>
+                                  <p style={styles.featureDesc}>{feature.description}</p>
+                                </div>
+                              ))}
+                            </div>
+                    
+                            <div style={styles.trustSection}>
+                              <p style={{ marginBottom: '8px' }}>Trusted by freelancers and businesses worldwide</p>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '32px', flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 600 }}>✓ Secure Payments</span>
+                                <span style={{ fontWeight: 600 }}>✓ Verified Profiles</span>
+                                <span style={{ fontWeight: 600 }}>✓ 24/7 Support</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                    
+                        <Footer />
+                      </div>
+                    </>
+                    );
+                    };
+                    export default HomePage;
